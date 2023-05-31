@@ -1,9 +1,9 @@
 # Data Driven Sub-Grid Stress (SGS) Modeling of Turbulent Flows
 
 ## To Do
-- [ ] Set up DNS of a turbulent flat plate at $Re_\theta=1000$ with hexahedral elements and resolution of $d_x^+=15$ and $d_z^+=6$
-  - [ ] Repartition case for Polaris
-  - [ ] Run DNS for a few time steps to make sure setup is correct
+- [x] Set up DNS of a turbulent flat plate at $Re_\theta=1000$ with hexahedral elements and resolution of $d_x^+=15$ and $d_z^+=6$
+  - [x] Repartition case for Polaris
+  - [x] Run DNS for a few time steps to make sure setup is correct
 - [ ] Extract training, validation and testing data from flat plate DNS
   - [ ] Run DNS saving to restart files the model inputs, output, and min-max scaling for the dataset
   - [ ] Repeat with a few filter widths scaling factors (3, 6, 12) and for three separate time steps
