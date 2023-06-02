@@ -3,30 +3,59 @@ import torch
 from torch.nn.functional import mse_loss
 import matplotlib.pyplot as plt
 import evtk
+import vtk
 
 # Define class for the model
 class SGS:
-    def __init__(self, data_path, crd_path, model_path, device, vtk_export=False):
+    def __init__(self, data_path, model_path, crd_path=None, device="cpu"):
         self.data_path = data_path
         self.crd_path = crd_path
         self.model_path = model_path
         self.device = device
-        self.vtk_export = vtk_export
         self.test_data = None
         self.X = None
         self.y = None
         self.crd = None
         self.model = None
         self.y_pred_glob = None
+        self.min_val = np.zeros(6)
+        self.max_val = np.zeros(6)
 
     # Load data and model
-    def load_data_model(self):
-        test_data = np.load(self.data_path)
-        self.y = test_data[:,:6]
-        self.X = test_data[:,6:]
-        self.crd = np.load(self.crd_path)
+    def load_VTKdata_model(self):
+        extension = self.data_path.split(".")[-1]
+        #if "npy" in extension:
+        #    test_data = np.load(self.data_path)
+        #    self.y = test_data[:,:6]
+        #    self.X = test_data[:,6:]
+        #    self.crd = np.load(self.crd_path)
+        if "vtu" in extension or "vtk" in extension:
+            from vtk.util import numpy_support as VN
+            reader = vtk.vtkXMLUnstructuredGridReader()
+            reader.SetFileName(self.data_path)
+            reader.PointArrayStatus = ['input123', 'input456', 'output123', 'output456']
+            reader.Update()
+            output = reader.GetOutput()
+            output.GetPointData().RemoveArray("gij")
+            output.GetPointData().RemoveArray("GradUFilt")
+            output.GetPointData().RemoveArray("GradVFilt")
+            output.GetPointData().RemoveArray("GradZFilt")
+            self.X = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("input123")),
+                                  VN.vtk_to_numpy(output.GetPointData().GetArray("input456"))))
+            self.y = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("output123")),
+                                  VN.vtk_to_numpy(output.GetPointData().GetArray("output456"))))
+            self.crd = VN.vtk_to_numpy(output.GetPoints().GetData())
+
+        if (np.amin(self.y[:,0]) < 0 or np.amax(self.y[:,0]) > 1):
+            for i in range(6):
+                self.min_val[i] = np.amin(self.y[:,i])
+                self.max_val[i] = np.amax(self.y[:,i])
+                self.y[:,i] = (self.y[:,i] - self.min_val[i])/(self.max_val[i] - self.min_val[i])
+            
         self.model = torch.jit.load(self.model_path, 
                                     map_location=torch.device(self.device))
+        return output
+
 
     # Run inference on all data for global metrics
     def test_global(self, X_test=None, y_test=None):
@@ -71,44 +100,31 @@ class SGS:
         return np.corrcoef([np.ndarray.flatten(y),np.ndarray.flatten(y_pred)])[0][1]
 
     # Save to vtk files for import into Paraview
-    def save_vtk(self, y, y_pred):
-        if self.vtk_export:
-            points_x = np.ascontiguousarray(self.crd[:,0])
-            points_y = np.ascontiguousarray(self.crd[:,1])
-            points_z = np.ascontiguousarray(self.crd[:,2])
+    def save_vtk(self, polydata):
+        from vtk.numpy_interface import dataset_adapter as dsa
+        new = dsa.WrapDataObject(polydata)
+        output = self.y_pred_glob
+        for i in range(6):
+            output[:,i] = output[:,i] * (self.max_val[i] - self.min_val[i]) + self.min_val[i]
+        new.PointData.append(output[:,:3], "pred_output123")
+        new.PointData.append(output[:,3:], "pred_output456")
+        writer = vtk.vtkXMLUnstructuredGridWriter()
+        writer.SetFileName("predictions.vtu")
+        writer.SetInputData(new.VTKObject)
+        writer.Write()
 
-            true_11 = np.ascontiguousarray(y[:,0])
-            pred_11 = np.ascontiguousarray(y_pred[:,0])
-
-            evtk.hl.pointsToVTK("./predictions", points_x, points_y, points_z,
-                                data={"true_11": true_11, "pred_11": pred_11}
-                                )
-
-# Offline trained model on 1k flat plate BL data with 3x mesh filter width
-data_path = "./3x/data/train_data_3x.npy"
-crd_path = "./3x/data/crd_data_3x.npy"
-model_path = "./3x/NNmodel_jit.pt"
-device = "cpu"
-off_bl_3x = SGS(data_path, crd_path, model_path, device, vtk_export=True)
-off_bl_3x.load_data_model()
-mse_glob, cc_glob = off_bl_3x.test_global()
-crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
 
 # Offline trained model on 1k flat plate BL data with 3x mesh filter width
-data_path = "./6x/data/train_data_6x.npy"
-crd_path = "./6x/data/crd_data_6x.npy"
-model_path = "./6x/NNmodel_jit.pt"
-device = "cpu"
-off_bl_6x = SGS(data_path, crd_path, model_path, device, vtk_export=True)
-off_bl_6x.load_data_model()
-mse_glob, cc_glob = off_bl_6x.test_global()
-crd_y, mse_y_off_bl_6x_6x, cc_y_off_bl_6x_6x =  off_bl_6x.test_y_layers()
+data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts29085_1x_clip_noWall_noFS.vtu"
+model_path = "./NNmodel_jit.pt"
+off_bl_1x = SGS(data_path, model_path)
+polydata = off_bl_1x.load_VTKdata_model()
+mse_glob, cc_glob = off_bl_1x.test_global()
+print(off_bl_1x.min_val)
+print(off_bl_1x.max_val)
+#crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
+#off_bl_1x.save_vtk(polydata)
 
-# Offline trained model on 1k flat plate BL data with 3x mesh filter width
-X_off_bl_6x = off_bl_6x.X
-y_off_bl_6x = off_bl_6x.y
-crd_off_bl_6x = off_bl_6x.crd
-crd_y, mse_y_off_bl_3x_6x, cc_y_off_bl_3x_6x = off_bl_3x.test_y_layers(X_off_bl_6x,y_off_bl_6x,crd_off_bl_6x)
 
 """
 # Offline trained model on 1k flat plate BL data with 3x mesh filter width
@@ -121,7 +137,7 @@ X_off_hit, y_off_hit = off_hit.load_data_model()
 y_pred_off_hit, mse_glob, cc_glob = off_hit.test_global(X_off_hit, y_off_hit)
 crd_y, mse_y_off_hit, cc_y_off_hit =  off_hit.test_y_layers(X_off_hit,y_off_hit)
 """
-
+"""
 fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(14, 6))
 axs[0].plot(crd_y, mse_y_off_bl_3x_3x, 's', label="off_bl_3x_3x")
 axs[0].plot(crd_y, mse_y_off_bl_6x_6x, 'o', label="off_bl_6x_6x")
@@ -146,4 +162,4 @@ axs[1].legend()
 #plt.savefig(fig_name+"_yerrors.png", dpi='figure', format="png")
 plt.show()
 
-
+"""

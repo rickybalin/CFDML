@@ -98,7 +98,7 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
                 
             # Print data for some ranks only
             if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
-                print(f'\n{comm.rank}: Validation Epoch: {epoch+1} | ' + \
+                print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
                         f'[{batch_idx+1}/{num_batches}] | ' + \
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
                 sys.stdout.flush()

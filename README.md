@@ -5,8 +5,9 @@
   - [x] Repartition case for Polaris
   - [x] Run DNS for a few time steps to make sure setup is correct
 - [ ] Extract training, validation and testing data from flat plate DNS
-  - [ ] Run DNS saving to restart files the model inputs, output, and min-max scaling for the dataset
-  - [ ] Repeat with a few filter widths scaling factors (3, 6, 12) and for three separate time steps
+  - [x] Run DNS saving to restart files the model inputs, output, and min-max scaling for the dataset
+  - [x] Repeat with different width scaling factors (1, 3, 6, 12) for the same time step to generate training data
+  - [ ] Repeat for different time steps to generate validation data
 - [ ] Perform offline training of anisotropic SGS ANN model on flat plate DNS data
   - [ ] Train model on a single snapshot and a single filter width
   - [ ] Train model on a single snapshot and multiple filter widths

@@ -5,7 +5,6 @@
 
 from os.path import exists
 import sys
-import torch
 import numpy as np
 
 ### MPI Communicator class
@@ -77,7 +76,7 @@ def weights_init_uniform(m):
         m.weight.data.fill_(0.5)
         m.bias.data.fill_(0)
 
-### Load training data from file
+### Load training data from file or create synthetic data
 def load_data(cfg, rng):
     if (cfg.train.data_path == "synthetic"):
         samples = 10 * cfg.train.mini_batch
@@ -98,16 +97,35 @@ def load_data(cfg, rng):
                         mesh[ind,0] = x
                         mesh[ind,1] = y
                         mesh[ind,2] = z
-    else: 
+    else:
         extension = cfg.train.data_path.split(".")[-1]
         if "npy" in extension:
             data = np.float32(np.load(cfg.train.data_path))
-        if ("qcnn" in cfg.train.model):
+        elif "vtu" in extension or "vtk" in extension:
+            import vtk
+            from vtk.util import numpy_support as VN
+            reader = vtk.vtkXMLUnstructuredGridReader()
+            reader.SetFileName(cfg.train.data_path)
+            reader.Update()
+            output = reader.GetOutput()
+            features = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("input123")),
+                                  VN.vtk_to_numpy(output.GetPointData().GetArray("input456"))))
+            targets = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("output123")),
+                                  VN.vtk_to_numpy(output.GetPointData().GetArray("output456"))))
+            data = np.hstack((targets,features))
+        
+        # Model specific data loading and manipulation
+        mesh = None
+        if (cfg.train.model=='sgs'):
+            if (np.amin(data[:,0]) < 0 or np.amax(data[:,0]) > 1):
+                for i in range(6):
+                    min_val = np.amin(data[:,i])
+                    max_val = np.amax(data[:,i])
+                    data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
+        elif ("qcnn" in cfg.train.model):
             extension = mesh_file.split(".")[-1]
             if "npy" in extension:
                 mesh = np.float32(np.load(mesh_file))
-        else:
-            mesh = None
     return data, mesh
 
 
