@@ -19,8 +19,8 @@ run_args:
     simprocs: 1 # integer - number of MPI processes for simulation
     simprocs_pn: 1 # integer - number of MPI processes per node for simulation
     mlprocs: 1 # integer - number of MPI processes for ML training
-    mlprocs_pn: 4 # integer - number of MPI processes per node for ML training
-    dbprocs_pn: 4 # integer - number of threads for database
+    mlprocs_pn: 1 # integer - number of MPI processes per node for ML training
+    dbprocs_pn: 1 # integer - number of threads for database
     sim_cpu_bind: "" # none, core, list, numa - CPU binding for simulation
     ml_cpu_bind: "none" # none, core, list, numa - CPU binding for ML training
 
@@ -44,21 +44,21 @@ sim:
 # Distributed training config
 train:
     executable: "" # string - path to ML training executable
-    data_path: "./train_data/SGS/flatPlateBL_Ret1000_flatTop_12-30_3x.npy" # string, synthetic - path to training data to load
+    data_path: "synthetic" # string, synthetic - path to training data to load
     model: "sgs" # sgs, qcnn-3d - model ID
-    channels: 1 # integer - channels for QCNN model
+    channels: 4 # integer - channels for QCNN model
     qcnn_config: "" # string - path to config file for QCNN model
     distributed: "ddp" # horovod, ddp - distributed training library
-    device: "cpu" # cpu, cuda, xpu - device to train on
+    device: "cuda" # cpu, cuda, xpu - device to train on
     epochs: 10 # integer - max number of epochs for training
     batch: 0 # integer - number of tensors to grab from database at once, 0: grab all tensors at once
     mini_batch: 64 # integer - mini batch size for SGD update
     learning_rate: 0.0001 # float - serial leranring rate
     tolerance: 1.0e-8 # float - convergence tolerance of validation loss
-    validation_split: 0.25 # float - percentage of data kept for validation
+    validation_split: 0.20 # float - percentage of data kept for validation
     optimizer: "Adam" # Adam - optimizer used for training
     precision: "fp32" # fp32, fp64, bf64 - precision for training
-    name: "./models/SGS/flatPlateBL_Ret1000_flatTop_12-30/NNmodel_3x" # string - name used to save ML model
+    name: "./NNmodel" # string - name used to save ML model
     save_db: False # True, False - save database contents at the end of trainint to .rdb file
     repeatability: False # True, False - make training deterministic
 

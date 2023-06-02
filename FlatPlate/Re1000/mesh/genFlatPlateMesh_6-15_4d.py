@@ -24,7 +24,7 @@ zmin = 0; zmax = 0.452
 Lz = zmax-zmin
 
 #%% Define grid spacing
-nz = 283 # this creates 282 elements
+nz = 284 # this creates 283 elements
 dz = 6*lvisc
 z = np.linspace(zmin,zmax-dz,nz)
 

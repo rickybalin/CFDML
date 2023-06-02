@@ -29,7 +29,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
 
     # Loop over mini-batches
     for batch_idx, data in enumerate(train_loader):
-            # Offload data
+            # Offload batch data
             if (cfg.train.device != 'cpu'):
                data = data.to(cfg.train.device)
 
@@ -43,16 +43,17 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
             loss.backward()
             optimizer.step()
             rtime = perf_counter() - rtime
-            t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
-            t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
-            fact = float(1.0/t_data.i_compMiniBatch)
-            t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
+            if (epoch>1):
+                t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
+                t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
+                fact = float(1.0/t_data.i_compMiniBatch)
+                t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
 
             # Update running loss
             running_loss += loss.item()
 
             # Print data for some ranks only
-            if (comm.rank%20==0 and (batch_idx)%50==0):
+            if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
                 print(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
                       f'[{batch_idx+1}/{num_batches}] | ' + \
                       f'Loss: {loss.item():>8e}')
@@ -62,7 +63,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
     running_loss = running_loss / num_batches
     loss_avg = metric_average(comm, running_loss)
     if comm.rank == 0: 
-        print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e} \n")
+        print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e}")
         sys.stdout.flush()
 
     return loss_avg, t_data
@@ -82,7 +83,7 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
     # Loop over batches, which in this case are the tensors to grab from database
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
-            # Offload data
+            # Offload batch data
             if (cfg.train.device != 'cpu'):
                 data = data.to(cfg.train.device)
 
@@ -96,8 +97,8 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
             running_loss += loss.item()
                 
             # Print data for some ranks only
-            if (comm.rank%20==0 and (batch_idx)%50==0):
-                print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
+            if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
+                print(f'\n{comm.rank}: Validation Epoch: {epoch+1} | ' + \
                         f'[{batch_idx+1}/{num_batches}] | ' + \
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
                 sys.stdout.flush()
@@ -131,12 +132,18 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
         import horovod.torch as hvd
 
     # Set precision of model and data
-    if (cfg.train.precision == "fp64"):
+    if (cfg.train.precision == "fp32"):
+        data = torch.tensor(data, dtype=torch.float32)
+    elif (cfg.train.precision == "fp64"):
         model.double()
         data = torch.tensor(data, dtype=torch.float64)
     elif (cfg.train.precision == "bf16"):
         model.bfloat16()
         data = torch.tensor(data, dtype=torch.bfloat16)
+    
+    # Offload entire data (this was actually slower...)
+    #if (cfg.train.device != 'cpu'):
+    #    data = data.to(cfg.train.device)
 
     # Split data and create datasets
     samples = data.shape[0]
@@ -154,7 +161,7 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
         train_sampler = None
         val_sampler = None
         train_dataloader = DataLoader(trainDataset, batch_size=cfg.train.mini_batch, 
-                                      shuffle=True, drop_last=True)
+                                      shuffle=True, drop_last=True) #pin_memory=False, num_workers=0, prefetch_factor=None)
         val_dataloader = DataLoader(valDataset, batch_size=cfg.train.mini_batch, 
                                     drop_last=True)
     else:
@@ -181,6 +188,7 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
 
     # Loop over epochs
     for ep in range(cfg.train.epochs):
+        tic_l = perf_counter()
         if (comm.rank == 0):
             print(f"\n Epoch {ep+1} of {cfg.train.epochs}")
             print("-------------------------------")
@@ -189,17 +197,24 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
         # Train
         if train_sampler:
             train_sampler.set_epoch(ep)
-        rtime = perf_counter()
+        tic_t = perf_counter()
         global_loss, t_data = offline_train(comm, model, train_dataloader, 
                                             optimizer, ep, t_data, cfg)
-        rtime = perf_counter() - rtime
-        if (ep>0):
-            t_data.t_train = t_data.t_train + rtime
+        toc_t = perf_counter()
+        if (ep>1):
+            t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
 
         # Validate
+        tic_v = perf_counter()
         global_acc, global_val_loss, valData = offline_validate(comm, model, 
                                                                 val_dataloader, ep, cfg)
+        toc_v = perf_counter()
+        if (ep>1):
+            t_data.t_val = t_data.t_val + (toc_v - tic_v)
+            t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
+            t_data.i_val = t_data.i_val + 1
 
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.train.tolerance):
@@ -213,5 +228,8 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             break
 
+        toc_l = perf_counter()
+        if (ep>1):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
 
     return model, valData

@@ -50,7 +50,6 @@ def main(cfg: DictConfig):
         import socket
         import torch.distributed as dist
         from torch.nn.parallel import DistributedDataParallel as DDP
-        sys.stdout.flush()
         os.environ['RANK'] = str(comm.rank)
         os.environ['WORLD_SIZE'] = str(comm.size)
         master_addr = socket.gethostname() if comm.rank == 0 else None
@@ -67,7 +66,6 @@ def main(cfg: DictConfig):
                                 rank=int(comm.rank),
                                 world_size=int(comm.size),
                                 init_method='env://')
-        sys.stdout.flush()
 
     # Set all seeds if need reproducibility
     if cfg.train.repeatability:
@@ -129,11 +127,11 @@ def main(cfg: DictConfig):
     if (cfg.train.distributed=='ddp'):
         model = DDP(model)
 
+    # Train model
     if cfg.database.launch:
         model, testData = onlineTrainLoop(cfg, comm, hvd_comm, client, t_data, model)
     else:
         model, testData = offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data)
-
 
     # Save model to file before exiting
     if (cfg.train.distributed=='ddp'):
@@ -166,7 +164,7 @@ def main(cfg: DictConfig):
     if (comm.rank==0):
         print("\nTiming data:")
         sys.stdout.flush()
-    t_data.printTimeData(comm)
+    t_data.printTimeData(cfg, comm)
  
 
     # Exit
