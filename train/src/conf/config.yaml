@@ -49,7 +49,7 @@ train:
     channels: 4 # integer - channels for QCNN model
     qcnn_config: "" # string - path to config file for QCNN model
     distributed: "ddp" # horovod, ddp - distributed training library
-    device: "cuda" # cpu, cuda, xpu - device to train on
+    device: "cpu" # cpu, cuda, xpu - device to train on
     epochs: 10 # integer - max number of epochs for training
     batch: 0 # integer - number of tensors to grab from database at once, 0: grab all tensors at once
     mini_batch: 64 # integer - mini batch size for SGD update
