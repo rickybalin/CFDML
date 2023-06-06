@@ -23,6 +23,12 @@ class SGS:
 
     # Load data and model
     def load_VTKdata_model(self):
+        self.model = torch.jit.load(self.model_path+"_jit.pt", 
+                                    map_location=torch.device(self.device))
+        tmp = np.loadtxt(self.model_path+"_scaling.txt")
+        self.min_val = tmp[:,0]
+        self.max_val = tmp[:,1]
+
         extension = self.data_path.split(".")[-1]
         #if "npy" in extension:
         #    test_data = np.load(self.data_path)
@@ -48,12 +54,8 @@ class SGS:
 
         if (np.amin(self.y[:,0]) < 0 or np.amax(self.y[:,0]) > 1):
             for i in range(6):
-                self.min_val[i] = np.amin(self.y[:,i])
-                self.max_val[i] = np.amax(self.y[:,i])
                 self.y[:,i] = (self.y[:,i] - self.min_val[i])/(self.max_val[i] - self.min_val[i])
             
-        self.model = torch.jit.load(self.model_path, 
-                                    map_location=torch.device(self.device))
         return output
 
 
@@ -116,12 +118,10 @@ class SGS:
 
 # Offline trained model on 1k flat plate BL data with 3x mesh filter width
 data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts29085_1x_clip_noWall_noFS.vtu"
-model_path = "./NNmodel_jit.pt"
+model_path = "./models/rb/NNmodel_1x"
 off_bl_1x = SGS(data_path, model_path)
 polydata = off_bl_1x.load_VTKdata_model()
 mse_glob, cc_glob = off_bl_1x.test_global()
-print(off_bl_1x.min_val)
-print(off_bl_1x.max_val)
 #crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
 #off_bl_1x.save_vtk(polydata)
 

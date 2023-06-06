@@ -6,6 +6,8 @@
 from os.path import exists
 import sys
 import numpy as np
+import vtk
+from vtk.util import numpy_support as VN
 
 ### MPI Communicator class
 class MPI_COMM:
@@ -102,8 +104,8 @@ def load_data(cfg, rng):
         if "npy" in extension:
             data = np.float32(np.load(cfg.train.data_path))
         elif "vtu" in extension or "vtk" in extension:
-            import vtk
-            from vtk.util import numpy_support as VN
+            #import vtk
+            #from vtk.util import numpy_support as VN
             reader = vtk.vtkXMLUnstructuredGridReader()
             reader.SetFileName(cfg.train.data_path)
             reader.Update()
@@ -118,10 +120,12 @@ def load_data(cfg, rng):
         mesh = None
         if (cfg.train.model=='sgs'):
             if (np.amin(data[:,0]) < 0 or np.amax(data[:,0]) > 1):
-                for i in range(6):
-                    min_val = np.amin(data[:,i])
-                    max_val = np.amax(data[:,i])
-                    data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
+                with open(cfg.train.name+"_scaling.txt", "w") as fh:
+                    for i in range(6):
+                        min_val = np.amin(data[:,i])
+                        max_val = np.amax(data[:,i])
+                        fh.write(f"{min_val:>8e} {max_val:>8e}\n")
+                        data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
         elif ("qcnn" in cfg.train.model):
             extension = mesh_file.split(".")[-1]
             if "npy" in extension:
