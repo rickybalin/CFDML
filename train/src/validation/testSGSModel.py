@@ -1,9 +1,13 @@
 import numpy as np
+from numpy import linalg as la
+import math as m
 import torch
 from torch.nn.functional import mse_loss
 import matplotlib.pyplot as plt
 import evtk
 import vtk
+
+from computeSGSinputsNoutputs import jacobi
 
 # Define class for the model
 class SGS:
@@ -15,11 +19,15 @@ class SGS:
         self.test_data = None
         self.X = None
         self.y = None
+        self.SGS = None
         self.crd = None
         self.model = None
         self.y_pred_glob = None
         self.min_val = np.zeros(6)
         self.max_val = np.zeros(6)
+        self.eigvecs_aligned = None
+        self.SpO = None
+        self.Deltaij_norm = None
 
     # Load data and model
     def load_VTKdata_model(self):
@@ -42,38 +50,35 @@ class SGS:
             reader.PointArrayStatus = ['input123', 'input456', 'output123', 'output456']
             reader.Update()
             output = reader.GetOutput()
-            output.GetPointData().RemoveArray("gij")
-            output.GetPointData().RemoveArray("GradUFilt")
-            output.GetPointData().RemoveArray("GradVFilt")
-            output.GetPointData().RemoveArray("GradZFilt")
             self.X = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("input123")),
-                                  VN.vtk_to_numpy(output.GetPointData().GetArray("input456"))))
+                                VN.vtk_to_numpy(output.GetPointData().GetArray("input456"))))
             self.y = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("output123")),
-                                  VN.vtk_to_numpy(output.GetPointData().GetArray("output456"))))
+                                VN.vtk_to_numpy(output.GetPointData().GetArray("output456"))))
+            self.SGS = np.hstack((VN.vtk_to_numpy(output.GetPointData().GetArray("SGS_diag")),
+                                  VN.vtk_to_numpy(output.GetPointData().GetArray("SGS_offdiag"))))
             self.crd = VN.vtk_to_numpy(output.GetPoints().GetData())
-
-        if (np.amin(self.y[:,0]) < 0 or np.amax(self.y[:,0]) > 1):
-            for i in range(6):
-                self.y[:,i] = (self.y[:,i] - self.min_val[i])/(self.max_val[i] - self.min_val[i])
-            
         return output
-
 
     # Run inference on all data for global metrics
     def test_global(self, X_test=None, y_test=None):
         if X_test and y_test:
             X = X_test; y = y_test
         else:
-            X = self.X; y = self.y
+            X = self.X; y = self.y; SGS = self.SGS
         X_torch = torch.from_numpy(np.float32(X))
         self.y_pred_glob = self.model(X_torch).detach().numpy()
+        self.y_pred_glob = self.undo_min_max(self.y_pred_glob)
         mse_glob = self.MSE(y,self.y_pred_glob)
         cc_glob = self.CC(y,self.y_pred_glob)
         print("Inference on global data:")
-        print(f"MSE = {mse_glob:>8e}")
-        print(f"Corr. Coefficient = {cc_glob:>8e}")
+        print(f"Output MSE = {mse_glob:>8e}")
+        print(f"Output Corr. Coefficient = {cc_glob:>8e}")
+        self.SGS_pred_glob = self.compute_SGS(self.y_pred_glob)
+        mse_glob = self.MSE(SGS,self.SGS_pred_glob)
+        cc_glob = self.CC(SGS,self.SGS_pred_glob)
+        print(f"SGS MSE = {mse_glob:>8e}")
+        print(f"SGS Corr. Coefficient = {cc_glob:>8e}")
         print("")
-        return mse_glob, cc_glob
     
     # Run inference one 1 wall-parallel layer at a time
     def test_y_layers(self, X_test=None, y_test=None, crd_test=None):
@@ -89,9 +94,16 @@ class SGS:
             index = np.where(crd[:,1]==crd_y[j])
             X_tmp = torch.from_numpy(np.float32(X[index]))
             y_pred_tmp = self.model(X_tmp).detach().numpy()
+            y_pred_tmp = self.undo_min_max(y_pred_tmp)
             mse_y[j] = self.MSE(y[index],y_pred_tmp)
             cc_y[j] = self.CC(y[index],y_pred_tmp)
         return crd_y, mse_y, cc_y
+
+    # Undo the model's min-max scaling
+    def undo_min_max(self,y):
+        for i in range(6):
+            y[:,i] = y[:,i] * (self.max_val[i] - self.min_val[i]) + self.min_val[i]
+        return y
 
     # Deine MSE function
     def MSE(self, y, y_pred):
@@ -101,15 +113,113 @@ class SGS:
     def CC(self, y, y_pred):
         return np.corrcoef([np.ndarray.flatten(y),np.ndarray.flatten(y_pred)])[0][1]
 
+    # Align the eigenvalues and eignevectors according to the local vorticity
+    def align_tensors(self,evals,evecs,vec):
+        if (evals[0]<1.0e-8 and evals[1]<1.0e-8 and evals[2]<1.0e-8):
+            index = [0,1,2]
+        else:
+            index = np.flip(np.argsort(evals))
+        lda = evals[index]
+        vec_norm = m.sqrt(vec[0]**2 + vec[1]**2 + vec[2]**2)
+        vec = vec/vec_norm
+        eigvec = np.zeros((3,3))
+        eigvec[:,0] = evecs[:,index[0]]
+        eigvec[:,1] = evecs[:,index[1]]
+        eigvec[:,2] = evecs[:,index[2]]
+        eigvec_vort_aligned = eigvec.copy()
+        if (np.dot(vec,eigvec_vort_aligned[:,0]) < np.dot(vec,-eigvec_vort_aligned[:,0])):
+            eigvec_vort_aligned[:,0] = -eigvec_vort_aligned[:,0]
+        if (np.dot(vec,eigvec_vort_aligned[:,2]) < np.dot(vec,-eigvec_vort_aligned[:,2])):
+            eigvec_vort_aligned[:,2] = -eigvec_vort_aligned[:,2]
+        eigvec_vort_aligned[0,1] = (eigvec_vort_aligned[1,2]*eigvec_vort_aligned[2,0]) \
+                               - (eigvec_vort_aligned[2,2]*eigvec_vort_aligned[1,0])
+        eigvec_vort_aligned[1,1] = (eigvec_vort_aligned[2,2]*eigvec_vort_aligned[0,0]) \
+                               - (eigvec_vort_aligned[0,2]*eigvec_vort_aligned[2,0])
+        eigvec_vort_aligned[2,1] = (eigvec_vort_aligned[0,2]*eigvec_vort_aligned[1,0]) \
+                               - (eigvec_vort_aligned[1,2]*eigvec_vort_aligned[0,0])
+        return lda, eigvec, eigvec_vort_aligned
+
+    # Compute the transformation needed to obtain the physical stresses
+    def compute_transformation(self, polydata, scaling):
+        from vtk.util import numpy_support as VN
+        GradU = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradUFilt")),
+                            VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradVFilt")),
+                            VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradZFilt"))))
+        GradU = np.reshape(GradU, (-1,3,3))
+        Delta = VN.vtk_to_numpy(polydata.GetPointData().GetArray("gij"))
+        nsamples = GradU.shape[0]
+        self.eigvecs_aligned = np.zeros((nsamples,3,3))
+        self.SpO = np.zeros((nsamples,))
+        self.Deltaij_norm = np.zeros((nsamples,))
+        Deltaij = np.zeros((3,3))
+        Sij = np.zeros((3,3))
+        Oij = np.zeros((3,3))
+        vort = np.zeros((3,))
+        for i in range(2): #range(nsamples):
+            Deltaij[0,0] = Delta[i,0]*scaling[0]
+            Deltaij[1,1] = Delta[i,1]*scaling[1]
+            Deltaij[2,2] = Delta[i,2]*scaling[2]
+            self.Deltaij_norm[i] = m.sqrt(Deltaij[0,0]**2 + Deltaij[1,1]**2 + Deltaij[2,2]**2)
+            Deltaij = Deltaij / (self.Deltaij_norm[i]+1.0e-14)
+            Gij = np.matmul(GradU[i],Deltaij)
+            Sij[0,0] = Gij[0,0]
+            Sij[1,1] = Gij[1,1]
+            Sij[2,2] = Gij[2,2]
+            Sij[0,1] = 0.5*(Gij[0,1]+Gij[1,0])
+            Sij[0,2] = 0.5*(Gij[0,2]+Gij[2,0])
+            Sij[1,2] = 0.5*(Gij[1,2]+Gij[2,1])
+            Sij[1,0] = Sij[0,1]
+            Sij[2,0] = Sij[0,2]
+            Sij[2,1] = Sij[1,2]
+            Oij[0,1] = 0.5*(Gij[0,1]-Gij[1,0])
+            Oij[0,2] = 0.5*(Gij[0,2]-Gij[2,0])
+            Oij[1,2] = 0.5*(Gij[1,2]-Gij[2,1])
+            Oij[1,0] = -Oij[0,1]
+            Oij[2,0] = -Oij[0,2]
+            Oij[2,1] = -Oij[1,2]
+            vort[0] = -2*Oij[1,2]
+            vort[1] = -2*Oij[0,2]
+            vort[2] = -2*Oij[0,1]
+            Sij_norm = m.sqrt(Sij[0,0]**2+Sij[1,1]**2+Sij[2,2]**2 \
+                          + 2*(Sij[0,1]**2+Sij[0,2]**2+Sij[1,2]**2))
+            vort_norm = m.sqrt(vort[0]**2 + vort[1]**2 + vort[2]**2)
+            self.SpO[i] = Sij_norm**2 + 0.5*vort_norm**2
+            evals, evecs = jacobi(Sij) #la.eig(Sij[i])
+            lda, eigvecs, self.eigvecs_aligned[i] = self.align_tensors(evals,evecs,vort)
+
+    # Compute physical stresses
+    def compute_SGS(self,y,index=None):
+        tmp = np.zeros((3,3))
+        nsamples = y.shape[0]
+        SGS_pred = np.zeros((nsamples,6))
+        for i in range(nsamples):
+            tmp[0,0] = y[i,0]
+            tmp[1,1] = y[i,1]
+            tmp[2,2] = y[i,2]
+            tmp[0,1] = y[i,3]
+            tmp[0,2] = y[i,4]
+            tmp[1,2] = y[i,5]
+            tmp[1,0] = tmp[0,1]
+            tmp[2,0] = tmp[0,2]
+            tmp[2,1] = tmp[1,2]
+            tmp = np.matmul(self.eigvecs_aligned[i],tmp)
+            tmp = np.matmul(tmp,np.transpose(self.eigvecs_aligned[i]))
+            SGS_pred[i,0] = tmp[0,0] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+            SGS_pred[i,1] = tmp[1,1] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+            SGS_pred[i,2] = tmp[2,2] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+            SGS_pred[i,3] = tmp[0,1] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+            SGS_pred[i,4] = tmp[0,2] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+            SGS_pred[i,5] = tmp[1,2] * (self.Deltaij_norm[i]**2 * self.SpO[i])
+        return SGS_pred
+
     # Save to vtk files for import into Paraview
     def save_vtk(self, polydata):
         from vtk.numpy_interface import dataset_adapter as dsa
         new = dsa.WrapDataObject(polydata)
-        output = self.y_pred_glob
-        for i in range(6):
-            output[:,i] = output[:,i] * (self.max_val[i] - self.min_val[i]) + self.min_val[i]
-        new.PointData.append(output[:,:3], "pred_output123")
-        new.PointData.append(output[:,3:], "pred_output456")
+        new.PointData.append(self.y_pred_glob[:,:3], "pred_output123")
+        new.PointData.append(self.y_pred_glob[:,3:], "pred_output456")
+        new.PointData.append(self.SGS_pred_glob[:,:3], "pred_SGS_diag")
+        new.PointData.append(self.SGS_pred_glob[:,3:], "pred_SGS_offdiag")
         writer = vtk.vtkXMLUnstructuredGridWriter()
         writer.SetFileName("predictions.vtu")
         writer.SetInputData(new.VTKObject)
@@ -117,11 +227,12 @@ class SGS:
 
 
 # Offline trained model on 1k flat plate BL data with 3x mesh filter width
-data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts29085_1x_clip_noWall_noFS.vtu"
-model_path = "./models/rb/NNmodel_1x"
+data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts30005_3x_noDamp_jacobi_test.vtu"
+model_path = "./NNmodel_3x"
 off_bl_1x = SGS(data_path, model_path)
 polydata = off_bl_1x.load_VTKdata_model()
-mse_glob, cc_glob = off_bl_1x.test_global()
+off_bl_1x.compute_transformation(polydata, [3, 3, 3])
+off_bl_1x.test_global()
 #crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
 #off_bl_1x.save_vtk(polydata)
 
