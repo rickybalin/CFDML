@@ -120,6 +120,7 @@ def align_tensors(evals,evecs,vec):
         index = np.flip(np.argsort(evals))
     lda = evals[index]
 
+    vec = np.array([0, 1, 0])
     vec_norm = m.sqrt(vec[0]**2 + vec[1]**2 + vec[2]**2)
     vec = vec/vec_norm
 

@@ -97,7 +97,7 @@ def main(cfg: DictConfig):
 
     # Load data from file if not launching database
     if not cfg.database.launch:
-         data, mesh_nodes = utils.load_data(cfg, rng)
+        data, mesh_nodes = utils.load_data(cfg, rng)
 
     # Instantiate the NN model and optimizer 
     if (cfg.train.model=="sgs"):
