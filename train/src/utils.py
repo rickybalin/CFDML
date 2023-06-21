@@ -151,7 +151,7 @@ def comp_ins_outs_SGS(polydata):
     
     # Initialize new arrays
     nsamples = GradU.shape[0]
-    Deltaij = np.zeros((nsamples,3,3))
+    Deltaij = np.zeros((3,3))
     Gij = np.zeros((3,3))
     Sij = np.zeros((3,3))
     Oij = np.zeros((3,3))
@@ -214,12 +214,12 @@ def comp_ins_outs_SGS(polydata):
         inputs[i,4] = vort_Sframe[1] / (m.sqrt(SpO)+eps)
         inputs[i,5] = nu / (Deltaij_norm**2 * m.sqrt(SpO) + eps)
 
-        tmp[0,0] = SGS[0] / (Deltaij_norm**2 * SpO + eps)
-        tmp[1,1] = SGS[1] / (Deltaij_norm**2 * SpO + eps)
-        tmp[2,2] = SGS[2] / (Deltaij_norm**2 * SpO + eps)
-        tmp[0,1] = SGS[3] / (Deltaij_norm**2 * SpO + eps)
-        tmp[0,2] = SGS[4] / (Deltaij_norm**2 * SpO + eps)
-        tmp[1,2] = SGS[5] / (Deltaij_norm**2 * SpO + eps)
+        tmp[0,0] = SGS[i,0] / (Deltaij_norm**2 * SpO + eps)
+        tmp[1,1] = SGS[i,1] / (Deltaij_norm**2 * SpO + eps)
+        tmp[2,2] = SGS[i,2] / (Deltaij_norm**2 * SpO + eps)
+        tmp[0,1] = SGS[i,3] / (Deltaij_norm**2 * SpO + eps)
+        tmp[0,2] = SGS[i,4] / (Deltaij_norm**2 * SpO + eps)
+        tmp[1,2] = SGS[i,5] / (Deltaij_norm**2 * SpO + eps)
         tmp[1,0] = tmp[0,1]
         tmp[2,0] = tmp[0,2]
         tmp[2,1] = tmp[1,2]
