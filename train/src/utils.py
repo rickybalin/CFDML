@@ -197,6 +197,7 @@ def comp_ins_outs_SGS(polydata):
 
         evals, evecs = la.eig(Sij)
         vec = vort.copy()
+        #vec = np.array([0,1,0])
         lda, eigvecs, eigvecs_aligned = align_tensors(evals,evecs,vec)
 
         Sij_norm = m.sqrt(Sij[0,0]**2+Sij[1,1]**2+Sij[2,2]**2 \

@@ -30,6 +30,7 @@ class SGS:
         self.SpO = None
         self.Deltaij_norm = None
         self.SGS_GM = None
+        self.new_outputs = None
 
     # Load data and model
     def load_VTKdata_model(self):
@@ -152,10 +153,12 @@ class SGS:
         self.eigvecs_aligned = np.zeros((nsamples,3,3))
         self.SpO = np.zeros((nsamples,))
         self.Deltaij_norm = np.zeros((nsamples,))
+        self.new_outputs = np.zeros((nsamples,6))
         Deltaij = np.zeros((3,3))
         Sij = np.zeros((3,3))
         Oij = np.zeros((3,3))
         vort = np.zeros((3,))
+        tmp = np.zeros((3,3))
         for i in range(2): #range(nsamples):
             Deltaij[0,0] = Delta[i,0]*scaling[0]
             Deltaij[1,1] = Delta[i,1]*scaling[1]
@@ -185,8 +188,29 @@ class SGS:
                           + 2*(Sij[0,1]**2+Sij[0,2]**2+Sij[1,2]**2))
             vort_norm = m.sqrt(vort[0]**2 + vort[1]**2 + vort[2]**2)
             self.SpO[i] = Sij_norm**2 + 0.5*vort_norm**2
-            evals, evecs = jacobi(Sij) #la.eig(Sij[i])
-            lda, eigvecs, self.eigvecs_aligned[i] = self.align_tensors(evals,evecs,vort)
+            #evals, evecs = jacobi(Sij) 
+            evals, evecs = la.eig(Sij)
+            vec = vort.copy()
+            #vec = np.array([0,1,0])
+            lda, eigvecs, self.eigvecs_aligned[i] = self.align_tensors(evals,evecs,vec)
+            tmp[0,0] = SGS[i,0] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[1,1] = SGS[i,1] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[2,2] = SGS[i,2] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[0,1] = SGS[i,3] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[0,2] = SGS[i,4] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[1,2] = SGS[i,5] / (self.Deltaij_norm[i]**2 * self.SpO[i] + 1.0e-14)
+            tmp[1,0] = tmp[0,1]
+            tmp[2,0] = tmp[0,2]
+            tmp[2,1] = tmp[1,2]
+            tmp = np.matmul(np.transpose(self.eigvecs_aligned[i]),
+                           np.matmul(tmp,self.eigvecs_aligned[i]))
+            self.new_outputs[i,0] = tmp[0,0]
+            self.new_outputs[i,1] = tmp[1,1]
+            self.new_outputs[i,2] = tmp[2,2]
+            self.new_outputs[i,3] = tmp[0,1]
+            self.new_outputs[i,4] = tmp[0,2]
+            self.new_outputs[i,5] = tmp[1,2]
+
 
     # Compute physical stresses
     def compute_SGS(self,y,index=None):
@@ -243,34 +267,48 @@ class SGS:
                                 Delta[i,2]**2 * GradU[i,1,2]*GradU[i,2,2]) / 12 # 23
         
     # Save to vtk files for import into Paraview
-    def save_vtk(self, polydata):
+    def save_vtk(self, polydata, fname):
         from vtk.numpy_interface import dataset_adapter as dsa
         new = dsa.WrapDataObject(polydata)
         new.PointData.append(self.y_pred_glob[:,:3], "pred_output123")
         new.PointData.append(self.y_pred_glob[:,3:], "pred_output456")
         new.PointData.append(self.SGS_pred_glob[:,:3], "pred_SGS_diag")
         new.PointData.append(self.SGS_pred_glob[:,3:], "pred_SGS_offdiag")
-        if (self.SGS_GM==None):
-            self.SGS_GM = np.zeros((self.y_pred_glob.shape[0],6))
-        new.PointData.append(self.SGS_pred_glob[:,:3], "SGSGM_diag")
-        new.PointData.append(self.SGS_pred_glob[:,3:], "SGSGM_offdiag")
+        if (self.new_outputs!=None):
+            new.PointData.append(self.new_outputs[:,:3], "new_output123")
+            new.PointData.append(self.new_outputs[:,3:], "new_output456")
+        if (self.SGS_GM!=None):
+            new.PointData.append(self.SGS_pred_glob[:,:3], "SGSGM_diag")
+            new.PointData.append(self.SGS_pred_glob[:,3:], "SGSGM_offdiag")
         writer = vtk.vtkXMLUnstructuredGridWriter()
-        writer.SetFileName("predictions.vtu")
+        writer.SetFileName(fname)
         writer.SetInputData(new.VTKObject)
         writer.Write()
 
 
 
 
-# Offline trained model on 1k flat plate BL data with 3x mesh filter width
+# Baseline model
 data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts30005_3x_noDamp_jacobi_test.vtu"
-model_path = "./NNmodel_3x"
-off_bl_1x = SGS(data_path, model_path)
-polydata = off_bl_1x.load_VTKdata_model()
-off_bl_1x.compute_transformation(polydata, [3, 3, 3])
-off_bl_1x.test_global()
+model_path = "./models/3x/NNmodel"
+base = SGS(data_path, model_path)
+polydata = base.load_VTKdata_model()
+base.compute_transformation(polydata, [3, 3, 3])
+base.test_global()
+base.gradient_SGS_model(polydata)
 #crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
-#off_bl_1x.save_vtk(polydata)
+base.save_vtk(polydata,model_path+"_predictions.vtu")
+
+# Wall aligned model
+data_path = "train_data/FlatPlate_ReTheta1000_6-15_ts30005_3x_noDamp_jacobi_test.vtu"
+model_path = "./models/3x/py_inputs/NNmodel_wall"
+wall = SGS(data_path, model_path)
+polydata = wall.load_VTKdata_model()
+wall.compute_transformation(polydata, [3, 3, 3])
+wall.test_global()
+wall.gradient_SGS_model(polydata)
+#crd_y, mse_y_off_bl_3x_3x, cc_y_off_bl_3x_3x =  off_bl_3x.test_y_layers()
+wall.save_vtk(polydata,model_path+"_predictions.vtu")
 
 
 """
