@@ -6,6 +6,7 @@ from torch.nn.functional import mse_loss
 import matplotlib.pyplot as plt
 import evtk
 import vtk
+from vtk.util import numpy_support as VN
 
 from computeSGSinputsNoutputs import jacobi
 
@@ -28,6 +29,7 @@ class SGS:
         self.eigvecs_aligned = None
         self.SpO = None
         self.Deltaij_norm = None
+        self.SGS_GM = None
 
     # Load data and model
     def load_VTKdata_model(self):
@@ -141,7 +143,6 @@ class SGS:
 
     # Compute the transformation needed to obtain the physical stresses
     def compute_transformation(self, polydata, scaling):
-        from vtk.util import numpy_support as VN
         GradU = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradUFilt")),
                             VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradVFilt")),
                             VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradZFilt"))))
@@ -212,6 +213,35 @@ class SGS:
             SGS_pred[i,5] = tmp[1,2] * (self.Deltaij_norm[i]**2 * self.SpO[i])
         return SGS_pred
 
+    # Compute the stress with the Gradient Model
+    def gradient_SGS_model(self,polydata):
+        GradU = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradUFilt")),
+                            VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradVFilt")),
+                            VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradZFilt"))))
+        GradU = np.reshape(GradU, (-1,3,3))
+        Delta = VN.vtk_to_numpy(polydata.GetPointData().GetArray("gij"))
+        nsamples = GradU.shape[0]
+        self.SGS_GM = np.zeros((nsamples,6))
+        for i in range(nsamples):
+            self.SGS_GM[i,0] = (Delta[i,0]**2 * GradU[i,0,0]**2 + \
+                                Delta[i,1]**2 * GradU[i,0,1]**2 + \
+                                Delta[i,2]**2 * GradU[i,0,2]**2) / 12 # 11
+            self.SGS_GM[i,1] = (Delta[i,0]**2 * GradU[i,1,0]**2 + \
+                                Delta[i,1]**2 * GradU[i,1,1]**2 + \
+                                Delta[i,2]**2 * GradU[i,1,2]**2) / 12 # 22
+            self.SGS_GM[i,2] = (Delta[i,0]**2 * GradU[i,2,0]**2 + \
+                                Delta[i,1]**2 * GradU[i,2,1]**2 + \
+                                Delta[i,2]**2 * GradU[i,2,2]**2) / 12 # 33
+            self.SGS_GM[i,3] = (Delta[i,0]**2 * GradU[i,0,0]*GradU[i,1,0] + \
+                                Delta[i,1]**2 * GradU[i,0,1]*GradU[i,1,1] + \
+                                Delta[i,2]**2 * GradU[i,0,2]*GradU[i,1,2]) / 12 # 12
+            self.SGS_GM[i,4] = (Delta[i,0]**2 * GradU[i,0,0]*GradU[i,2,0] + \
+                                Delta[i,1]**2 * GradU[i,0,1]*GradU[i,2,1] + \
+                                Delta[i,2]**2 * GradU[i,0,2]*GradU[i,2,2]) / 12 # 13
+            self.SGS_GM[i,5] = (Delta[i,0]**2 * GradU[i,1,0]*GradU[i,2,0] + \
+                                Delta[i,1]**2 * GradU[i,1,1]*GradU[i,2,1] + \
+                                Delta[i,2]**2 * GradU[i,1,2]*GradU[i,2,2]) / 12 # 23
+        
     # Save to vtk files for import into Paraview
     def save_vtk(self, polydata):
         from vtk.numpy_interface import dataset_adapter as dsa
@@ -220,10 +250,16 @@ class SGS:
         new.PointData.append(self.y_pred_glob[:,3:], "pred_output456")
         new.PointData.append(self.SGS_pred_glob[:,:3], "pred_SGS_diag")
         new.PointData.append(self.SGS_pred_glob[:,3:], "pred_SGS_offdiag")
+        if (self.SGS_GM==None):
+            self.SGS_GM = np.zeros((self.y_pred_glob.shape[0],6))
+        new.PointData.append(self.SGS_pred_glob[:,:3], "SGSGM_diag")
+        new.PointData.append(self.SGS_pred_glob[:,3:], "SGSGM_offdiag")
         writer = vtk.vtkXMLUnstructuredGridWriter()
         writer.SetFileName("predictions.vtu")
         writer.SetInputData(new.VTKObject)
         writer.Write()
+
+
 
 
 # Offline trained model on 1k flat plate BL data with 3x mesh filter width
