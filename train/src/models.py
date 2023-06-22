@@ -14,24 +14,35 @@ from torch_quadconv import MeshHandler
 ### Anisotropic SGS model for LES developed by Aviral Prakash and John A. Evans at UCB
 class anisoSGS(nn.Module): 
     # The class takes as inputs the input and output dimensions and the number of layers   
-    def __init__(self, inputDim, outputDim, numNeurons):
+    def __init__(self, inputDim=6, outputDim=6, numNeurons=20, numLayers=1):
         super().__init__()
         self.ndIn = inputDim
         self.ndOut = outputDim
         self.nNeurons = numNeurons
-        self.net = nn.Sequential(
-            nn.Linear(self.ndIn, self.nNeurons),
-            nn.LeakyReLU(0.3),
-            nn.Linear(self.nNeurons, self.ndOut),
-        )
+        self.nLayers = numLayers
+        #self.net = nn.Sequential(
+        #    nn.Linear(self.ndIn, self.nNeurons),
+        #    nn.LeakyReLU(0.3),
+        #    nn.Linear(self.nNeurons, self.ndOut))
+        self.net = nn.ModuleList()
+        self.net.append(nn.Linear(self.ndIn, self.nNeurons)) # input layer
+        self.net.append(nn.LeakyReLU(0.3))
+        for l in range(self.nLayers-1): # hidden layers
+            self.net.append(nn.Linear(self.nNeurons, self.nNeurons))
+            self.net.append(nn.LeakyReLU(0.3))
+        self.net.append(nn.Linear(self.nNeurons, self.ndOut)) # output layer
+        
         # Define the loss function
         self.loss_fn = nn.functional.mse_loss
         # Define the loss function to measure accuracy
         self.acc_fn = nn.functional.mse_loss #comp_corrCoeff
 
     # Define the method to do a forward pass
-    def forward(self, x): 
-        return self.net(x)
+    def forward(self, x):
+        for layer in self.net:
+            x = layer(x)
+        #return self.net(x)
+        return x
 
     # Define the methods to do a training, validation and test step
     def training_step(self, batch):

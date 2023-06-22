@@ -98,10 +98,13 @@ def main(cfg: DictConfig):
     # Load data from file if not launching database
     if not cfg.database.launch:
         data, mesh_nodes = utils.load_data(cfg, rng)
+        comm.comm.Barrier()
+        if (comm.rank == 0):
+            print("\nLoaded training data \n")
 
     # Instantiate the NN model and optimizer 
     if (cfg.train.model=="sgs"):
-        model = models.anisoSGS(inputDim=6, outputDim=6, numNeurons=20)
+        model = models.anisoSGS(numNeurons=20, numLayers=1)
     elif ("qcnn" in cfg.train.model):
         mesh_nodes = torch.from_numpy(mesh_nodes)
         model = models.qcnn(comm.rank, mesh_nodes, cfg.train.qcnn_config, cfg.train.channels)

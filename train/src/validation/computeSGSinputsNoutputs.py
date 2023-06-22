@@ -30,34 +30,46 @@ def load_VTKdata(fname):
         return output, GradU, Delta, SGS
 
 ## Write VTK data
-def write_VTKdata(fname, polydata, Gij, Sij, Oij, vort, lda, eigvecs,
-                  eigvecs_aligned, vort_Sframe, inputs, outputs):
+def write_VTKdata(fname, polydata, Gij=None, Sij=None, Oij=None, vort=None, 
+                  lda=None, eigvecs=None,
+                  eigvecs_aligned=None, vort_Sframe=None, 
+                  inputs=None, outputs=None):
     extension = fname.split(".")[-1]
     if "vtu" in extension or "vtk" in extension:
         from vtk.numpy_interface import dataset_adapter as dsa
         new = dsa.WrapDataObject(polydata)
-        new.PointData.append(Gij[:,0,:], "Gij_u")
-        new.PointData.append(Gij[:,1,:], "Gij_v")
-        new.PointData.append(Gij[:,2,:], "Gij_w")
-        new.PointData.append(Sij[:,0,:], "Sij_1")
-        new.PointData.append(Sij[:,1,:], "Sij_2")
-        new.PointData.append(Sij[:,2,:], "Sij_3")
-        new.PointData.append(Oij[:,0,:], "Oij_1")
-        new.PointData.append(Oij[:,1,:], "Oij_2")
-        new.PointData.append(Oij[:,2,:], "Oij_3")
-        new.PointData.append(vort, "vorticity")
-        new.PointData.append(lda, "eigval")
-        new.PointData.append(eigvecs[:,:,0], "eigvec_1")
-        new.PointData.append(eigvecs[:,:,1], "eigvec_2")
-        new.PointData.append(eigvecs[:,:,2], "eigvec_3")
-        new.PointData.append(eigvecs_aligned[:,:,0], "eigvec_a_1")
-        new.PointData.append(eigvecs_aligned[:,:,1], "eigvec_a_2")
-        new.PointData.append(eigvecs_aligned[:,:,2], "eigvec_a_3")
-        new.PointData.append(vort_Sframe, "vorticity_Sframe")
-        new.PointData.append(inputs[:,:3], "input123_py")
-        new.PointData.append(inputs[:,3:], "input456_py")
-        new.PointData.append(outputs[:,:3], "output123_py")
-        new.PointData.append(outputs[:,3:], "output456_py")
+        if (Gij is not None):
+            new.PointData.append(Gij[:,0,:], "Gij_u")
+            new.PointData.append(Gij[:,1,:], "Gij_v")
+            new.PointData.append(Gij[:,2,:], "Gij_w")
+        if (Sij is not None):
+            new.PointData.append(Sij[:,0,:], "Sij_1")
+            new.PointData.append(Sij[:,1,:], "Sij_2")
+            new.PointData.append(Sij[:,2,:], "Sij_3")
+        if (Oij is not None):
+            new.PointData.append(Oij[:,0,:], "Oij_1")
+            new.PointData.append(Oij[:,1,:], "Oij_2")
+            new.PointData.append(Oij[:,2,:], "Oij_3")
+        if (vort is not None):
+            new.PointData.append(vort, "vorticity")
+        if (lda is not None):
+            new.PointData.append(lda, "eigval")
+        if (eigvecs is not None):
+            new.PointData.append(eigvecs[:,:,0], "eigvec_1")
+            new.PointData.append(eigvecs[:,:,1], "eigvec_2")
+            new.PointData.append(eigvecs[:,:,2], "eigvec_3")
+        if (eigvecs_aligned is not None):
+            new.PointData.append(eigvecs_aligned[:,:,0], "eigvec_a_1")
+            new.PointData.append(eigvecs_aligned[:,:,1], "eigvec_a_2")
+            new.PointData.append(eigvecs_aligned[:,:,2], "eigvec_a_3")
+        if (vort_Sframe is not None):
+            new.PointData.append(vort_Sframe, "vorticity_Sframe")
+        if (inputs is not None):
+            new.PointData.append(inputs[:,:3], "input123_py")
+            new.PointData.append(inputs[:,3:], "input456_py")
+        if (outputs is not None):
+            new.PointData.append(outputs[:,:3], "output123_py")
+            new.PointData.append(outputs[:,3:], "output456_py")
         writer = vtk.vtkXMLUnstructuredGridWriter()
         writer.SetFileName(fname)
         writer.SetInputData(new.VTKObject)
@@ -147,7 +159,9 @@ def align_tensors(evals,evecs,vec):
 def main():
     # Load data from .vtu file
     dir = "/Users/rbalin/Documents/Research/ALCF_PostDoc/Conferences/PASC23/FlatPlate/Train/CRS_6-15_4d/"
-    fname = dir + "train_data/FlatPlate_ReTheta1000_6-15_ts30005_3x_noDamp_jacobi_test.vtu"
+    dir = dir + "train_data_noDamp_jacobi/"
+    fname = dir + "FlatPlate_ReTheta1000_6-15_ts30005_3n6_noDamp_jacobi_clip.vtu"
+    scaling = [1, 1, 1]
     polydata, GradU, Delta, SGS = load_VTKdata(fname)
     nsamples = GradU.shape[0]
 
@@ -166,7 +180,6 @@ def main():
     outputs = np.zeros((nsamples,6))
 
     # Loop over number of grid points and compute model inputs and outputs
-    scaling = [3, 3, 3]
     eps = 1.0e-14
     nu = 1.25e-5
     for i in range(nsamples):
@@ -196,8 +209,8 @@ def main():
         vort[i,1] = -2*Oij[i,0,2]
         vort[i,2] = -2*Oij[i,0,1]
 
-        #evals, evecs = la.eig(Sij[i])
-        evals, evecs = jacobi(Sij[i])
+        evals, evecs = la.eig(Sij[i])
+        #evals, evecs = jacobi(Sij[i])
         lda[i], eigvecs[i], eigvecs_aligned[i] = align_tensors(evals,evecs,vort[i])
 
         Sij_norm = m.sqrt(Sij[i,0,0]**2+Sij[i,1,1]**2+Sij[i,2,2]**2 \
@@ -235,9 +248,11 @@ def main():
         outputs[i,5] = tmp[i,1,2]
 
     # Write the computed fields to file
-    fname = dir + "predictions.vtu"
-    write_VTKdata(fname, polydata, Gij, Sij, Oij, vort, lda, 
-                  eigvecs, eigvecs_aligned, vort_Sframe, inputs, outputs)
+    fname = dir + "FlatPlate_ReTheta1000_6-15_ts30005_3n6_noDamp_jacobi_clip_py.vtu"
+    #write_VTKdata(fname, polydata, Gij=Gij, Sij=Sij, Oij=Oij, vort=vort, lda=lda, 
+    #              eigvecs=eigvecs, eigvecs_aligned=eigvecs_aligned, 
+    #              vort_Sframe=vort_Sframe, inputs=inputs, outputs=outputs)
+    write_VTKdata(fname, polydata, inputs=inputs, outputs=outputs)
 
 
 ## Run Main

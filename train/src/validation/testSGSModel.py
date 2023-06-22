@@ -159,7 +159,7 @@ class SGS:
         Oij = np.zeros((3,3))
         vort = np.zeros((3,))
         tmp = np.zeros((3,3))
-        for i in range(2): #range(nsamples):
+        for i in range(nsamples):
             Deltaij[0,0] = Delta[i,0]*scaling[0]
             Deltaij[1,1] = Delta[i,1]*scaling[1]
             Deltaij[2,2] = Delta[i,2]*scaling[2]

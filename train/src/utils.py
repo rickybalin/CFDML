@@ -113,10 +113,10 @@ def load_data(cfg, rng):
             polydata = reader.GetOutput()
             if (cfg.train.model == 'sgs'):
                 if not cfg.train.comp_model_ins_outs:
-                    features = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("input123")),
-                                  VN.vtk_to_numpy(polydata.GetPointData().GetArray("input456"))))
-                    targets = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("output123")),
-                                  VN.vtk_to_numpy(polydata.GetPointData().GetArray("output456"))))
+                    features = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("input123_py")),
+                                  VN.vtk_to_numpy(polydata.GetPointData().GetArray("input456_py"))))
+                    targets = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("output123_py")),
+                                  VN.vtk_to_numpy(polydata.GetPointData().GetArray("output456_py"))))
                 else:
                     features, targets = comp_ins_outs_SGS(polydata)
                 data = np.hstack((targets,features))
@@ -139,7 +139,7 @@ def load_data(cfg, rng):
 
 
 ### Compute the inputs and outputs for the anisotropic SGS model from raw data
-def comp_ins_outs_SGS(polydata):
+def comp_ins_outs_SGS(polydata, alignment="vorticity"):
     # Read raw data from file
     GradU = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradUFilt")),
                         VN.vtk_to_numpy(polydata.GetPointData().GetArray("GradVFilt")),
@@ -196,8 +196,13 @@ def comp_ins_outs_SGS(polydata):
         vort[2] = -2*Oij[0,1]
 
         evals, evecs = la.eig(Sij)
-        vec = vort.copy()
-        #vec = np.array([0,1,0])
+        if (alignment=="vorticity"):
+            vec = vort.copy()
+        elif (alignment=="wall-normal"):
+            vec = np.array([0,1,0])
+        else:
+            print("Alignment option not known, used default vorticity alignment")
+            vec = vort.copy()
         lda, eigvecs, eigvecs_aligned = align_tensors(evals,evecs,vec)
 
         Sij_norm = m.sqrt(Sij[0,0]**2+Sij[1,1]**2+Sij[2,2]**2 \
