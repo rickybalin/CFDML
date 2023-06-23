@@ -46,6 +46,8 @@ train:
     executable: "" # string - path to ML training executable
     data_path: "synthetic" # string, synthetic - path to training data to load
     model: "sgs" # sgs, qcnn-3d - model ID
+    neurons: 20 # integer - number of neurons in layers for SGS model
+    layers: 1 # integer - number of hidden layers for SGS model
     channels: 4 # integer - channels for QCNN model
     qcnn_config: "" # string - path to config file for QCNN model
     comp_model_ins_outs: False # True, False - compute the model inputs and outputs from raw data

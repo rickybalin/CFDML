@@ -102,9 +102,9 @@ def main(cfg: DictConfig):
         if (comm.rank == 0):
             print("\nLoaded training data \n")
 
-    # Instantiate the NN model and optimizer 
+    # Instantiate the NN model 
     if (cfg.train.model=="sgs"):
-        model = models.anisoSGS(numNeurons=20, numLayers=1)
+        model = models.anisoSGS(numNeurons=cfg.train.neurons, numLayers=cfg.train.layers)
     elif ("qcnn" in cfg.train.model):
         mesh_nodes = torch.from_numpy(mesh_nodes)
         model = models.qcnn(comm.rank, mesh_nodes, cfg.train.qcnn_config, cfg.train.channels)
