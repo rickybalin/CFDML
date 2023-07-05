@@ -11,7 +11,6 @@ Input:
     kwargs: keyword arguments for conv block
 '''
 
-import torch
 from torch import nn
 
 from torch_quadconv import QuadConv
@@ -42,8 +41,8 @@ class Encoder(nn.Module):
             conv_params,
             latent_dim,
             block_args={},
-            forward_activation = nn.CELU,
-            latent_activation = nn.CELU,
+            forward_activation = nn.GELU,
+            latent_activation = nn.GELU,
             **kwargs
         ):
         super().__init__()
@@ -97,8 +96,8 @@ class Decoder(nn.Module):
             conv_params,
             latent_dim,
             block_args={},
-            forward_activation = nn.CELU,
-            latent_activation = nn.CELU,
+            forward_activation = nn.GELU,
+            latent_activation = nn.GELU,
             **kwargs
         ):
         super().__init__()

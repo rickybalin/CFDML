@@ -5,8 +5,7 @@ import torch
 from torch import nn
 
 from .modules import Encoder, Decoder
-
-from torch_quadconv import MeshHandler
+from .loss import relative_re
 
 '''
 Quadrature convolution autoencoder.
@@ -131,13 +130,9 @@ class Model(nn.Module):
         #predictions
         pred = self(batch)
 
-        #compute average relative reconstruction error
-        dim = tuple([i for i in range(1, pred.ndim)])
-
-        n = torch.sqrt(torch.sum((pred-batch)**2, dim=dim))
-        d = torch.sqrt(torch.sum((batch)**2, dim=dim))
-
-        error = n/d
+        #compute relative reconstruction error
+        error = relative_re(pred, batch)
+        error =  torch.mean(error)
 
         if return_loss:
             # compute loss to compare agains training
@@ -157,13 +152,9 @@ class Model(nn.Module):
         pred = self(batch)
 
         #compute relative reconstruction error
-        dim = tuple([i for i in range(1, pred.ndim)])
-
-        n = torch.sqrt(torch.sum((pred-batch)**2, dim=dim))
-        d = torch.sqrt(torch.sum((batch)**2, dim=dim))
-
-        error = n/d
-
+        error = relative_re(pred, batch)
+        error =  torch.mean(error) #, torch.mean(error, dim=0)
+        
         if return_loss:
             # compute loss to compare agains training
             loss = self.loss_fn(pred, batch)

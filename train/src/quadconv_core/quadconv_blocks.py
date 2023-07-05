@@ -15,7 +15,6 @@ Input:
 
 import numpy as np
 
-import torch
 import torch.nn as nn
 
 from torch_quadconv import QuadConv
@@ -30,8 +29,8 @@ class SkipBlock(nn.Module):
             in_channels,
             out_channels,
             adjoint = False,
-            activation1 = nn.CELU,
-            activation2 = nn.CELU,
+            activation1 = nn.GELU,
+            activation2 = nn.GELU,
             **kwargs
         ):
         super().__init__()
@@ -126,8 +125,8 @@ class PoolBlock(nn.Module):
             ratio = [],
             scale_factor = 2,
             adjoint = False,
-            activation1 = nn.CELU,
-            activation2 = nn.CELU,
+            activation1 = nn.GELU,
+            activation2 = nn.GELU,
             step = True,
             **kwargs
         ):

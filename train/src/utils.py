@@ -132,9 +132,9 @@ def load_data(cfg, rng):
                         fh.write(f"{min_val:>8e} {max_val:>8e}\n")
                         data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
         elif ("qcnn" in cfg.train.model):
-            extension = mesh_file.split(".")[-1]
+            extension = cfg.train.mesh_file.split(".")[-1]
             if "npy" in extension:
-                mesh = np.float32(np.load(mesh_file))
+                mesh = np.float32(np.load(cfg.train.mesh_file))
     return data, mesh
 
 

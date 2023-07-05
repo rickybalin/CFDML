@@ -2,7 +2,6 @@
 Miscellaneous utility functions.
 '''
 
-import os
 import yaml
 
 '''
