@@ -125,7 +125,7 @@ def load_data(cfg, rng):
         mesh = None
         if (cfg.train.model=='sgs'):
             if (np.amin(data[:,0]) < 0 or np.amax(data[:,0]) > 1):
-                with open(cfg.train.name+"_scaling.txt", "w") as fh:
+                with open(cfg.train.name+"_scaling.dat", "w") as fh:
                     for i in range(6):
                         min_val = np.amin(data[:,i])
                         max_val = np.amax(data[:,i])
@@ -135,6 +135,13 @@ def load_data(cfg, rng):
             extension = cfg.train.mesh_file.split(".")[-1]
             if "npy" in extension:
                 mesh = np.float32(np.load(cfg.train.mesh_file))
+            with open(cfg.train.name+"_scaling.dat", "w") as fh:
+                for i in range(4):
+                    min_val = np.amin(data[:,i,:])
+                    max_val = np.amax(data[:,i,:])
+                    fh.write(f"{min_val:>8e} {max_val:>8e}\n")
+                    data[:,i,:] = 1.0*(data[:,i,:] - min_val)/(max_val - min_val) - 0.0
+                
     return data, mesh
 
 

@@ -148,7 +148,7 @@ def main(cfg: DictConfig):
             torch.jit.save(module, f"{cfg.train.name}_jit.pt")
         elif ("qcnn" in cfg.train.model):
             encoder = models.qcnnEncoder(model.encoder, model.mesh)
-            decoder = models.qcnnDecoder(model.decoder, model.mesh)
+            decoder = models.qcnnDecoder(model.decoder, model.mesh, model.output_activation)
             dummy_latent = encoder(testData).detach()
             predicted = decoder(dummy_latent).detach()
             module_encode = torch.jit.trace(encoder, testData)

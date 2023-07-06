@@ -121,15 +121,16 @@ class qcnnEncoder(torch.nn.Module):
         return self.encoder(self.mesh, X)
 
 class qcnnDecoder(torch.nn.Module):
-    def __init__(self, decoder, mesh):
+    def __init__(self, decoder, mesh, output_activation):
         super().__init__()
         self.decoder = decoder
         self.mesh = mesh
+        self.output_activation = output_activation
 
     def forward(self, X):
         self.mesh.reset(mirror=True)
 
-        return self.decoder(self.mesh, X)
+        return self.output_activation(self.decoder(self.mesh, X))
 
 
 ###
