@@ -84,7 +84,7 @@ def weights_init_uniform(m):
 ### Load training data from file or create synthetic data
 def load_data(cfg, rng):
     if (cfg.train.data_path == "synthetic"):
-        samples = 10 * cfg.train.mini_batch
+        samples = 20 * cfg.train.mini_batch
         if (cfg.train.model == 'sgs'):
             data = np.float32(rng.normal(size=(samples,12)))
             mesh = None
