@@ -45,6 +45,7 @@ sim:
 train:
     executable: "" # string - path to ML training executable
     data_path: "synthetic" # string, synthetic - path to training data to load
+    mesh_file: "" # string - path to mesh nodes for QCNN model
     model: "sgs" # sgs, qcnn-3d - model ID
     neurons: 20 # integer - number of neurons in layers for SGS model
     layers: 1 # integer - number of hidden layers for SGS model

@@ -1,3 +1,4 @@
-*/__pycache__
+*/__pycache__/
 train/src/validation/.ipynb_checkpoints
 *.vtu
+*.pyc

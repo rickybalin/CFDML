@@ -92,7 +92,6 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
                 acc, loss = model.validation_step(data, return_loss=True)
             elif (cfg.train.distributed=='ddp'):
                 acc, loss = model.module.validation_step(data, return_loss=True)
-            acc = acc.mean()
             running_acc += acc.item()
             running_loss += loss.item()
                 
