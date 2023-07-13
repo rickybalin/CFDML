@@ -140,7 +140,7 @@ def load_data(cfg, rng):
                     min_val = np.amin(data[:,i,:])
                     max_val = np.amax(data[:,i,:])
                     fh.write(f"{min_val:>8e} {max_val:>8e}\n")
-                    data[:,i,:] = 1.0*(data[:,i,:] - min_val)/(max_val - min_val) - 0.0
+                    data[:,i,:] = 2.0*(data[:,i,:] - min_val)/(max_val - min_val) - 1.0
                 
     return data, mesh
 
