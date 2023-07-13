@@ -72,7 +72,7 @@ class timeStats:
             print("Total training throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_train)
         if comm.rank==0:
-            print(f"Number of train loops executed : {avg}\n")
+            print(f"Number of train loops executed : {int(avg)}\n")
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_compMiniBatch)
         if comm.rank==0:
@@ -84,7 +84,7 @@ class timeStats:
             print(f"Average time for a single batch computation [s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_compMiniBatch)
         if comm.rank==0:
-            print(f"Number of batches computed : {avg}\n")
+            print(f"Number of batches computed : {int(avg)}\n")
 
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_val)
         if comm.rank==0:
@@ -96,7 +96,7 @@ class timeStats:
             print(f"Total validation throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_val)
         if comm.rank==0:
-            print(f"Number of validation loops executed : {avg}\n")
+            print(f"Number of validation loops executed : {int(avg)}\n")
 
         # Online training metrics
         if cfg.database.launch:
