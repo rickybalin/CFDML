@@ -22,7 +22,7 @@ import utils
 import ssim_utils
 
 ## Main function
-@hydra.main(version_base=None, config_path="./conf", config_name="config")
+@hydra.main(version_base=None, config_path="./conf", config_name="train_config")
 def main(cfg: DictConfig):
     
     # Import and init MPI
@@ -42,11 +42,11 @@ def main(cfg: DictConfig):
 
     # Import Horovod and initialize
     hvd_comm = None
-    if (cfg.train.distributed=='horovod'):
+    if (cfg.distributed=='horovod'):
         #import horovod.torch as hvd
         hvd_comm = utils.HVD_COMM()
         hvd_comm.init(print_hello=print_hello)
-    elif (cfg.train.distributed=='ddp'):
+    elif (cfg.distributed=='ddp'):
         import socket
         import torch.distributed as dist
         from torch.nn.parallel import DistributedDataParallel as DDP
@@ -56,11 +56,11 @@ def main(cfg: DictConfig):
         master_addr = comm.comm.bcast(master_addr, root=0)
         os.environ['MASTER_ADDR'] = master_addr
         os.environ['MASTER_PORT'] = str(2345)
-        if (cfg.train.device=='cpu'):
+        if (cfg.device=='cpu'):
             backend = 'gloo'
-        elif (cfg.train.device=='cuda'):
+        elif (cfg.device=='cuda'):
             backend = 'nccl'
-        elif (cfg.train.device=='xpu'):
+        elif (cfg.device=='xpu'):
             backend = 'ccl'
         dist.init_process_group(backend,
                                 rank=int(comm.rank),
@@ -68,12 +68,12 @@ def main(cfg: DictConfig):
                                 init_method='env://')
 
     # Set all seeds if need reproducibility
-    if cfg.train.repeatability:
+    if cfg.repeatability:
         random_seed = 123456789
         random.seed(a=random_seed)
         rng = np.random.default_rng(seed=random_seed)
         torch.manual_seed(random_seed)
-        if (cfg.train.device=='cuda' and torch.cuda.is_available()):
+        if (cfg.device=='cuda' and torch.cuda.is_available()):
             torch.cuda.manual_seed(random_seed)
             torch.backends.cudnn.deterministic = True # only pick deterministic algorithms
             torch.backends.cudnn.benchmark = False # do not select fastest algorithms
@@ -84,10 +84,7 @@ def main(cfg: DictConfig):
     t_data = timeStats()
 
     # Initialize SmartRedis client and gather metadata
-    if cfg.database.launch:
-        # Import SmartSim libraries
-        global Client
-        from smartredis import Client
+    if cfg.online.db_launch:
         client = ssim_utils.SmartRedisClient()
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
@@ -96,66 +93,66 @@ def main(cfg: DictConfig):
         mesh_nodes = client.read_mesh(cfg, comm, t_data)
 
     # Load data from file if not launching database
-    if not cfg.database.launch:
+    if not cfg.online.db_launch:
         data, mesh_nodes = utils.load_data(cfg, rng)
         comm.comm.Barrier()
         if (comm.rank == 0):
             print("\nLoaded training data \n")
 
     # Instantiate the NN model 
-    if (cfg.train.model=="sgs"):
-        model = models.anisoSGS(numNeurons=cfg.train.neurons, numLayers=cfg.train.layers)
-    elif ("qcnn" in cfg.train.model):
+    if (cfg.model=="sgs"):
+        model = models.anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
+    elif ("qcnn" in cfg.model):
         mesh_nodes = torch.from_numpy(mesh_nodes)
-        model = models.qcnn(comm.rank, mesh_nodes, cfg.train.qcnn_config, cfg.train.channels)
+        model = models.qcnn(comm.rank, mesh_nodes, cfg.qcnn.qcnn_config, cfg.qcnn.channels)
 
     # Set device to run on and offload model
     if (comm.rank == 0):
-        print(f"\nRunning on device: {cfg.train.device} \n")
+        print(f"\nRunning on device: {cfg.device} \n")
         sys.stdout.flush()
-    device = torch.device(cfg.train.device)
+    device = torch.device(cfg.device)
     torch.set_num_threads(1)
-    if (cfg.train.device == 'cuda'):
+    if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
             torch.cuda.set_device(comm.rankl)
-    elif (cfg.train.device=='xpu'):
+    elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
             torch.xpu.set_device(comm.rankl)
-    if (cfg.train.device != 'cpu'):
+    if (cfg.device != 'cpu'):
         model.to(device)
-        if ("qcnn" in cfg.train.model):
+        if ("qcnn" in cfg.model):
             mesh_nodes = mesh_nodes.to(device)
 
     # Initializa DDP model
-    if (cfg.train.distributed=='ddp'):
+    if (cfg.distributed=='ddp'):
         model = DDP(model)
 
     # Train model
-    if cfg.database.launch:
-        model, testData = onlineTrainLoop(cfg, comm, hvd_comm, client, t_data, model)
+    if cfg.online.db_launch:
+        model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
     else:
-        model, testData = offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data)
+        model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
 
     # Save model to file before exiting
-    if (cfg.train.distributed=='ddp'):
+    if (cfg.distributed=='ddp'):
         model = model.module
         dist.destroy_process_group()
     if (comm.rank == 0):
-        torch.save(model.state_dict(), f"{cfg.train.name}.pt", _use_new_zipfile_serialization=False)
+        torch.save(model.state_dict(), f"{cfg.name}.pt", _use_new_zipfile_serialization=False)
         model.eval()
-        if (cfg.train.model=="sgs"):
+        if (cfg.model=="sgs"):
             module = torch.jit.trace(model, testData)
-            torch.jit.save(module, f"{cfg.train.name}_jit.pt")
-        elif ("qcnn" in cfg.train.model):
+            torch.jit.save(module, f"{cfg.name}_jit.pt")
+        elif ("qcnn" in cfg.model):
             encoder = models.qcnnEncoder(model.encoder, model.mesh)
             decoder = models.qcnnDecoder(model.decoder, model.mesh, model.output_activation)
             dummy_latent = encoder(testData).detach()
             predicted = decoder(dummy_latent).detach()
             module_encode = torch.jit.trace(encoder, testData)
-            torch.jit.save(module_encode, f"{cfg.train.name}_encoder_jit.pt")
+            torch.jit.save(module_encode, f"{cfg.name}_encoder_jit.pt")
             dummy_latent = module_encode(testData).detach()
             module_decode = torch.jit.trace(decoder, dummy_latent)
-            torch.jit.save(module_decode, f"{cfg.train.name}_decoder_jit.pt")
+            torch.jit.save(module_decode, f"{cfg.name}_decoder_jit.pt")
             predicted = module_decode(dummy_latent).detach()
 
         print("")

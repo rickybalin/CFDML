@@ -73,7 +73,7 @@ class MiniBatchDataset(Dataset):
 ### The input is a list of rank numbers corresponding to tensors in the database
 ### Used when the ranks are pre-determined and passed in as a list, was made
 ### to enable easy splitting of database tensors into training, validation, testing
-class PhastaKeyDataset(Dataset):
+class KeyDataset(Dataset):
     def __init__(self,rank_list,head_rank,step_num,dataOverWrite):
         self.ranks = rank_list
         self.head_rank = head_rank

@@ -12,9 +12,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+try:
+    import horovod as hvd
+except:
+    pass
 
-from utils import metric_average, comp_corrCoeff
-from datasets import PhastaKeyDataset, PhastaKeyMFDataset, MiniBatchDataset
+from utils import metric_average
+from datasets import MiniBatchDataset, KeyDataset
 
 
 ### Train the model
@@ -28,13 +32,14 @@ def online_train(comm, model, train_sampler, train_tensor_loader, optimizer, epo
     # Loop over batches, which in this case are the tensors to grab from database
     for tensor_idx, tensor_keys in enumerate(train_tensor_loader):
         # Grab data from database
-        #print(f'[{comm.Get_rank()}]: Grabbing tensors with key {tensor_keys}')
-        #sys.stdout.flush()
+        if (cfg.logging=='debug'):
+            print(f'[{comm.Get_rank()}]: Grabbing tensors with key {tensor_keys}')
+            sys.stdout.flush()
         rtime = perf_counter()
-        if (cfg.train.model=='sgs'):
+        if (cfg.model=='sgs'):
             concat_tensor = torch.cat([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-        elif ('qcnn' in cfg.train.model):
+        elif ('qcnn' in cfg.model):
             concat_tensor = torch.stack([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
         rtime = perf_counter() - rtime
@@ -46,30 +51,16 @@ def online_train(comm, model, train_sampler, train_tensor_loader, optimizer, epo
         # Create mini-batch dataset and loader
         mbdata = MiniBatchDataset(concat_tensor)
         train_loader = torch.utils.data.DataLoader(mbdata, shuffle=True,
-                                                   batch_size=cfg.train.mini_batch)
-        
+                                                   batch_size=cfg.mini_batch)
         # Loop over mini-batches
         for batch_idx, dbdata in enumerate(train_loader):
-            # Check for nans and infs
-            nanCheck = np.sum(np.isnan(dbdata).numpy())
-            infCheck = np.sum(np.isinf(dbdata).numpy())
-            if (nanCheck>0 or infCheck>0):
-                print("\n WARNING: Found NaN or Inf in training data \n")
-                sys.stdout.flush()
-
-            # FIXME: hack because PHASTA doesn't yet transpose the array before sending it
-            if ('qcnn' in cfg.train.model):
-                dbdata = torch.swapaxes(dbdata, 1, 2)
-            
             # Offload data
-            if (cfg.train.device != 'cpu'):
-               dbdata = dbdata.to(cfg.train.device)
+            if (cfg.device != 'cpu'):
+               dbdata = dbdata.to(cfg.device)
 
             # Perform forward and backward passes
             rtime = perf_counter()
             optimizer.zero_grad()
-            #output = model.forward(features)
-            #loss = loss_fn(output, target)
             loss = model.module.training_step(dbdata)
             loss.backward()
             optimizer.step()
@@ -117,12 +108,13 @@ def online_validate(comm, model, val_sampler, val_tensor_loader, epoch, mini_bat
     with torch.no_grad():
         for tensor_idx, tensor_keys in enumerate(val_tensor_loader):
             # Grab data from database
-            #print(f'[{comm.Get_rank()}]: Grabbing tensors with key {tensor_keys}')
-            #sys.stdout.flush()
-            if (cfg.train.model=='sgs'):
+            if (cfg.logging=='debug'):
+                print(f'[{comm.Get_rank()}]: Grabbing tensors with key {tensor_keys}')
+                sys.stdout.flush()
+            if (cfg.model=='sgs'):
                 concat_tensor = torch.cat([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-            elif ('qcnn' in cfg.train.model):
+            elif ('qcnn' in cfg.model):
                 concat_tensor = torch.stack([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
 
@@ -132,23 +124,12 @@ def online_validate(comm, model, val_sampler, val_tensor_loader, epoch, mini_bat
     
             # Loop over mini-batches
             for batch_idx, dbdata in enumerate(val_loader):
-                # Check for nans and infs
-                nanCheck = np.sum(np.isnan(dbdata).numpy())
-                infCheck = np.sum(np.isinf(dbdata).numpy())
-                if (nanCheck>0 or infCheck>0):
-                    print("\n WARNING: Found NaN or Inf in validation data \n")
-
-                # FIXME: hack because PHASTA doesn't yet transpose the array before sending it
-                if ('qcnn' in cfg.train.model):
-                    dbdata = torch.swapaxes(dbdata, 1, 2)
-                
                 # Offload data
-                if (cfg.train.device != 'cpu'):
-                    dbdata = dbdata.to(cfg.train.device)
+                if (cfg.device != 'cpu'):
+                    dbdata = dbdata.to(cfg.device)
 
                 # Perform forward pass
                 acc, loss = model.module.validation_step(dbdata, return_loss=True)
-                acc = acc.mean()
                 running_acc += acc.item()
                 running_loss += loss.item()
                 
@@ -188,10 +169,13 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
     with torch.no_grad():
         for tensor_idx, tensor_keys in enumerate(test_tensor_loader):
             # Grab data from database
-            if (cfg.train.model=='sgs'):
+            if (cfg.logging=='debug'):
+                print(f'[{comm.Get_rank()}]: Grabbing tensors with key {tensor_keys}')
+                sys.stdout.flush()
+            if (cfg.model=='sgs'):
                 concat_tensor = torch.cat([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-            elif ('qcnn' in cfg.train.model):
+            elif ('qcnn' in cfg.model):
                 concat_tensor = torch.stack([torch.from_numpy(client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
 
@@ -201,23 +185,12 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
     
             # Loop over mini-batches
             for batch_idx, dbdata in enumerate(test_loader):
-                # Check for nans and infs
-                nanCheck = np.sum(np.isnan(dbdata).numpy())
-                infCheck = np.sum(np.isinf(dbdata).numpy())
-                if (nanCheck>0 or infCheck>0):
-                    print("\n WARNING: Found NaN or Inf in testing data \n")
-
-                # FIXME: hack because PHASTA doesn't yet transpose the array before sending it
-                if ('qcnn' in cfg.train.model):
-                    dbdata = torch.swapaxes(dbdata, 1, 2)
-                
                 # Offload data
-                if (cfg.train.device != 'cpu'):
-                    dbdata = dbdata.to(cfg.train.device)
+                if (cfg.device != 'cpu'):
+                    dbdata = dbdata.to(cfg.device)
 
                 # Perform forward pass
                 acc, loss = model.module.test_step(dbdata, return_loss=True)
-                acc = acc.mean()
                 running_acc += acc.item()
                 running_loss += loss.item()
 
@@ -236,7 +209,7 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
     if comm.Get_rank() == 0:
         print(f"Testing set: Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
 
-    if (cfg.train.model=='sgs'):
+    if (cfg.model=='sgs'):
         testData = dbdata[:, model.module.ndOut:]
     else:
         testData = dbdata
@@ -254,18 +227,18 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     iepoch = 1 # epoch number
     rerun_check = 1 # 0 means quit training
     rank_list = np.arange(0,client.num_db_tensors*client.nfilters,dtype=int)
-    num_val_tensors = int(client.num_db_tensors*client.nfilters*cfg.train.validation_split)
+    num_val_tensors = int(client.num_db_tensors*client.nfilters*cfg.validation_split)
     num_train_tensors = client.num_db_tensors*client.nfilters - num_val_tensors
-    if (num_val_tensors==0 and cfg.train.validation_split>0):
+    if (num_val_tensors==0 and cfg.validation_split>0):
         num_val_tensors += 1
         num_train_tensors -= 1
 
     # Initialize optimizer
-    if (cfg.train.optimizer == "Adam"):
-        optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate*comm.size)
+    if (cfg.optimizer == "Adam"):
+        optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
         print("ERROR: only Adam optimizer implemented at the moment")
-    if (cfg.train.distributed=='horovod'):
+    if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
         optimizer = hvd.DistributedOptimizer(optimizer,
@@ -276,8 +249,23 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         print("\nStarting training loop ... \n")
         sys.stdout.flush()
     while True:
+        # Check to see if simulation says time to quit, if so break loop
+        if (client.client.poll_tensor("check-run",0,1)):
+            rtime = perf_counter()
+            tmp = client.client.get_tensor('check-run')
+            rtime = perf_counter() - rtime
+            t_data.t_meta = t_data.t_meta + rtime
+            t_data.i_meta = t_data.i_meta + 1
+            if (tmp[0] < 0.5):
+                if (rank == 0):
+                    print("Simulation says time to quit ... \n")
+                    sys.stdout.flush()
+                iTest = False
+                rerun_check = 0
+                break
+
         # check to see if the time step number has been sent to database, if not cycle
-        if (client.client.client.poll_tensor("step",0,1)):
+        if (client.client.poll_tensor("step",0,1)):
             rtime = perf_counter()
             tmp = client.client.get_tensor('step')
             rtime = perf_counter() - rtime
@@ -294,26 +282,25 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 print(f"Working with time step {istep} \n")
                 sys.stdout.flush()
        
-        # Create training and validation Datasets based on list of Simulation ranks
-        rng = np.random.default_rng(12345)
+        # Create training and validation Datasets based on list of simulation ranks
         rng.shuffle(rank_list)
         train_tensors = rank_list[:num_train_tensors]
         val_tensors = rank_list[num_train_tensors:]
-        if (cfg.train.model=="sgs" and client.nfilters>1):
+        if (cfg.model=="sgs" and client.nfilters>1):
             train_dataset = PhastaKeyMFDataset(train_tensors,client.num_db_tensors,
                                                client.head_rank,client.filters)
             val_dataset = PhastaKeyMFDataset(val_tensors,client.num_db_tensors,
                                              client.head_rank,client.filters)
         else:
-            train_dataset = PhastaKeyDataset(train_tensors,client.head_rank,istep,client.dataOverWr)
-            val_dataset = PhastaKeyDataset(val_tensors,client.head_rank,istep,client.dataOverWr)
+            train_dataset = KeyDataset(train_tensors,client.head_rank,istep,client.dataOverWr)
+            val_dataset = KeyDataset(val_tensors,client.head_rank,istep,client.dataOverWr)
         
         # Use DistributedSampler to partition the training and validation data across ranks
-        if (cfg.database.launch=="colocated"):
-            replicas = cfg.run_args.mlprocs_pn
+        if (cfg.online.db_launch=="colocated"):
+            replicas = cfg.ppn
             rank_arg = comm.rankl
         else:
-            replicas = cfg.run_args.mlprocs
+            replicas = comm.size
             rank_arg = comm.rank
         train_sampler = torch.utils.data.distributed.DistributedSampler(
                     train_dataset, num_replicas=replicas, rank=rank_arg, drop_last=False)
@@ -326,7 +313,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         
         # Print epoch number
         if (comm.rank == 0):
-            print(f"\n Epoch {iepoch} of {cfg.train.epochs}")
+            print(f"\n Epoch {iepoch} of {cfg.epochs}")
             print("-------------------------------")
             print(datetime.now())
             sys.stdout.flush()
@@ -344,17 +331,17 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
         # Call validation function
         acc_avg, corr_avg = online_validate(comm, model, val_sampler, val_tensor_loader, 
-                                            iepoch, cfg.train.mini_batch, client, cfg)
+                                            iepoch, cfg.mini_batch, client, cfg)
         
         # Check if tolerance on loss is satisfied
-        if (global_loss <= cfg.train.tolerance):
+        if (global_loss <= cfg.tolerance):
             if (comm.rank == 0):
                 print("\nConvergence tolerance met. Stopping training loop. \n")
             iTest = True
             break
         
         # Check if max number of epochs is reached
-        if (iepoch >= cfg.train.epochs):
+        if (iepoch >= cfg.epochs):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             iTest = True
@@ -380,10 +367,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 break
 
         # Create dataset, samples and loader for the test data
-        #test_dataset = PhastaKeyDataset(rank_list,istep,dataOverWr) # test on full domain data
-        test_dataset = PhastaKeyDataset(rank_list,client.head_rank,istep,client.dataOverWr) # test on full domain data
-        #test_sampler = torch.utils.data.distributed.DistributedSampler(
-        #            test_dataset, num_replicas=hsize, rank=hrank, drop_last=False)
+        test_dataset = KeyDataset(rank_list,client.head_rank,istep,client.dataOverWr)
         test_sampler = torch.utils.data.distributed.DistributedSampler(
                     test_dataset, num_replicas=replicas, rank=rank_arg, drop_last=False)
         test_tensor_loader = torch.utils.data.DataLoader(
@@ -391,8 +375,14 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
         # Call testing function
         testData, acc_avg, corr_avg = online_test(comm, model, test_sampler, test_tensor_loader,
-                                 cfg.train.mini_batch, client, cfg)
-        
+                                 cfg.mini_batch, client, cfg)
+
+    # Tell simulation to quit
+    if (comm.rank==0 and rerun_check!=0):
+        print("Telling simulation to quit ... \n")
+        arrMLrun = np.zeros(2)
+        client.client.put_tensor("check-run",arrMLrun)
+ 
     return model, testData
 
 
