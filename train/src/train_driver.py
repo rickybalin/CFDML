@@ -108,6 +108,9 @@ def main(cfg: DictConfig):
     elif ("qcnn" in cfg.train.model):
         mesh_nodes = torch.from_numpy(mesh_nodes)
         model = models.qcnn(comm.rank, mesh_nodes, cfg.train.qcnn_config, cfg.train.channels)
+    n_params = utils.count_weights(model)
+    if (comm.rank == 0):
+        print(f"\nLoaded model with {n_params} trainable parameters \n")
 
     # Set device to run on and offload model
     if (comm.rank == 0):
@@ -128,7 +131,7 @@ def main(cfg: DictConfig):
 
     # Initializa DDP model
     if (cfg.train.distributed=='ddp'):
-        model = DDP(model)
+        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
     # Train model
     if cfg.database.launch:

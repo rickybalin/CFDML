@@ -72,13 +72,19 @@ def comp_corrCoeff(output_tensor, target_tensor):
 
 
 ### Set the model weights and biases to fixed value for reproducibility
-def weights_init_uniform(m):
-    classname = m.__class__.__name__
+def weights_init_uniform(model):
+    classname = model.__class__.__name__
     # for every Linear layer in a model..
     if classname.find('Linear') != -1: 
         # apply a fixed value to the weights and a set bias=0
-        m.weight.data.fill_(0.5)
-        m.bias.data.fill_(0)
+        model.weight.data.fill_(0.5)
+        model.bias.data.fill_(0)
+
+
+### Count the number of trainable parameters in a model
+def count_weights(model):
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return n_params
 
 
 ### Load training data from file or create synthetic data
