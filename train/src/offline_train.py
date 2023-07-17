@@ -126,16 +126,16 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
 
 ### Main online training loop driver
 def offlineTrainLoop(cfg, comm, t_data, model, data):
-    # Import Horovod if needed here too
-    if (cfg.distributed=='horovod'):
-        import horovod.torch as hvd
-
     # Set precision of model and data
     if (cfg.precision == "fp32"):
+        model.float()
         data = torch.tensor(data, dtype=torch.float32)
     elif (cfg.precision == "fp64"):
         model.double()
         data = torch.tensor(data, dtype=torch.float64)
+    elif (cfg.precision == "fp16"):
+        model.half()
+        data = torch.tensor(data, dtype=torch.float16)
     elif (cfg.precision == "bf16"):
         model.bfloat16()
         data = torch.tensor(data, dtype=torch.bfloat16)

@@ -127,7 +127,7 @@ def main(cfg: DictConfig):
             mesh_nodes = mesh_nodes.to(device)
 
     # Initializa DDP model
-    if (cfg.train.distributed=='ddp'):
+    if (cfg.distributed=='ddp'):
         model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
     # Train model
