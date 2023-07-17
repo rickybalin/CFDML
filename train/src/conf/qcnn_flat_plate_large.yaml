@@ -20,7 +20,7 @@ stages: 2 #int
 loss_fn: "MSELoss" #str, loss from torch.nn
 optimizer: "Adam" #str, optimizer from torch.optim
 learning_rate: 0.01 #float
-output_activation: "Identity" # str, activation from torch.nn (Identity, Tanh)
+output_activation: "Tanh" # str, activation from torch.nn (Identity, Tanh)
 
 conv_params:
   in_points: [*num_points, *out0, *out1] #list[int]

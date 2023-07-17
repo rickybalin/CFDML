@@ -4,7 +4,9 @@
 #####
 
 import sys
+from os.path import exists
 from time import perf_counter
+from smartredis import Client
 
 class SmartRedisClient:
     def __init__(self):
@@ -22,8 +24,8 @@ class SmartRedisClient:
     # Initializa client
     def init(self, cfg, comm, t_data):
         # Read the address of the co-located database first
-        if (cfg.database.launch=='colocated'):
-            prefix = f'{cfg.run_args.simprocs}-procs_case/'
+        if (cfg.online.db_launch=='colocated'):
+            prefix = f'{cfg.online.simprocs}-procs_case/'
             address = self.read_SSDB(prefix, comm)
         else:
             address = None
@@ -33,8 +35,10 @@ class SmartRedisClient:
         if (comm.rank == 0):
             print("\nInitializing Python clients ...")
             sys.stdout.flush()
-        if (cfg.run_args.db_nodes==1):
+        if (cfg.online.db_nodes==1):
             rtime = perf_counter()
+            print(address)
+            sys.stdout.flush()
             self.client = Client(address=address, cluster=False)
             rtime = perf_counter() - rtime
             t_data.t_init = t_data.t_init + rtime
@@ -51,8 +55,8 @@ class SmartRedisClient:
             sys.stdout.flush()
 
     # Read the address of the co-located database
-    def read_SSDB(prefix, comm):
-        SSDB_file = prefix + f'SSDB_{comm.rank_name}.dat'
+    def read_SSDB(self, prefix, comm):
+        SSDB_file = prefix + f'SSDB_{comm.name}.dat'
         c = 0 
         while True:
             if (exists(SSDB_file)):
@@ -82,7 +86,7 @@ class SmartRedisClient:
             print("\nGetting size info from DB ...")
             sys.stdout.flush()
         while True:
-            if (self.client.client.poll_tensor("sizeInfo",0,1)):
+            if (self.client.poll_tensor("sizeInfo",0,1)):
                 rtime = perf_counter()
                 dataSizeInfo = self.client.get_tensor('sizeInfo')
                 rtime = perf_counter() - rtime
@@ -104,9 +108,9 @@ class SmartRedisClient:
             print(f"Number of total tensors in all DB: {self.num_tot_tensors}")
             sys.stdout.flush()
 
-        max_batch_size = int(self.num_db_tensors/cfg.run_args.mlprocs_pn)
-        self.tensor_batch = cfg.train.batch
-        if (cfg.train.batch==0 or self.tensor_batch>max_batch_size): 
+        max_batch_size = int(self.num_db_tensors/cfg.ppn)
+        self.tensor_batch = cfg.online.batch
+        if (cfg.online.batch==0 or self.tensor_batch>max_batch_size): 
             self.tensor_batch =  max_batch_size
         if (comm.rank == 0):
             print(f"Number of Simulation tensors per batch: {self.tensor_batch}")
@@ -132,7 +136,7 @@ class SmartRedisClient:
 
     # Read the flag determining how many filterwidths to train on
     def read_filters(self, cfg, t_data):
-        if (cfg.train.model == "sgs"):
+        if (cfg.model == "sgs"):
             while True:
                 if (self.client.poll_tensor("filters",0,1)):
                     rtime = perf_counter()
@@ -146,7 +150,7 @@ class SmartRedisClient:
     # Read the mesh nodes
     def read_mesh(self, cfg, comm, t_data):
         mesh_nodes = None
-        if ("qcnn" in cfg.train.model):
+        if ("qcnn" in cfg.model):
             rtime = perf_counter()
             mesh_nodes = self.client.get_tensor('mesh').astype('float32')
             rtime = perf_counter() - rtime

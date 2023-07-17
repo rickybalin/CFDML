@@ -99,7 +99,7 @@ class timeStats:
             print(f"Number of validation loops executed : {int(avg)}\n")
 
         # Online training metrics
-        if cfg.database.launch:
+        if cfg.online.db_launch:
             avg, std, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
             if comm.rank==0:
                 print(f"tSSIMInit : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
