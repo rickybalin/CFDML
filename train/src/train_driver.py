@@ -6,6 +6,7 @@ import hydra
 import numpy as np
 from time import perf_counter
 import random
+import datetime
 
 # Import ML libraries
 import torch
@@ -56,16 +57,14 @@ def main(cfg: DictConfig):
         master_addr = comm.comm.bcast(master_addr, root=0)
         os.environ['MASTER_ADDR'] = master_addr
         os.environ['MASTER_PORT'] = str(2345)
-        if (cfg.train.device=='cpu'):
-            backend = 'gloo'
-        elif (cfg.train.device=='cuda'):
-            backend = 'nccl'
-        elif (cfg.train.device=='xpu'):
-            backend = 'ccl'
+        if (cfg.train.device=='cpu'): backend = 'gloo'
+        elif (cfg.train.device=='cuda'): backend = 'nccl'
+        elif (cfg.train.device=='xpu'): backend = 'ccl'
         dist.init_process_group(backend,
                                 rank=int(comm.rank),
                                 world_size=int(comm.size),
-                                init_method='env://')
+                                init_method='env://',
+                                timeout=datetime.timedelta(seconds=120))
 
     # Set all seeds if need reproducibility
     if cfg.train.repeatability:
