@@ -29,7 +29,7 @@ class MPI_COMM:
         self.size = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
         self.name = MPI.Get_processor_name()
-        self.rankl = self.rank % cfg.run_args.mlprocs_pn
+        self.rankl = self.rank % cfg.ppn
         self.sum = MPI.SUM
         self.minloc = MPI.MINLOC
         self.maxloc = MPI.MAXLOC
@@ -72,25 +72,31 @@ def comp_corrCoeff(output_tensor, target_tensor):
 
 
 ### Set the model weights and biases to fixed value for reproducibility
-def weights_init_uniform(m):
-    classname = m.__class__.__name__
+def weights_init_uniform(model):
+    classname = model.__class__.__name__
     # for every Linear layer in a model..
     if classname.find('Linear') != -1: 
         # apply a fixed value to the weights and a set bias=0
-        m.weight.data.fill_(0.5)
-        m.bias.data.fill_(0)
+        model.weight.data.fill_(0.5)
+        model.bias.data.fill_(0)
+
+
+### Count the number of trainable parameters in a model
+def count_weights(model):
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return n_params
 
 
 ### Load training data from file or create synthetic data
 def load_data(cfg, rng):
-    if (cfg.train.data_path == "synthetic"):
-        samples = 20 * cfg.train.mini_batch
-        if (cfg.train.model == 'sgs'):
+    if (cfg.data_path == "synthetic"):
+        samples = 20 * cfg.mini_batch
+        if (cfg.model == 'sgs'):
             data = np.float32(rng.normal(size=(samples,12)))
             mesh = None
-        elif ("qcnn" in cfg.train.model):
+        elif ("qcnn" in cfg.model):
             N = 32
-            data = np.float32(rng.normal(size=(samples,cfg.train.channels,N**3)))
+            data = np.float32(rng.normal(size=(samples,cfg.qcnn.channels,N**3)))
             mesh = np.zeros((N**3,3), dtype=np.float32)
             for i in range(N):
                 x = 0. + 1. * (i - 1) / (N - 1)
@@ -103,16 +109,16 @@ def load_data(cfg, rng):
                         mesh[ind,1] = y
                         mesh[ind,2] = z
     else:
-        extension = cfg.train.data_path.split(".")[-1]
+        extension = cfg.data_path.split(".")[-1]
         if "npy" in extension:
-            data = np.float32(np.load(cfg.train.data_path))
+            data = np.float32(np.load(cfg.data_path))
         elif "vtu" in extension or "vtk" in extension:
             reader = vtk.vtkXMLUnstructuredGridReader()
-            reader.SetFileName(cfg.train.data_path)
+            reader.SetFileName(cfg.data_path)
             reader.Update()
             polydata = reader.GetOutput()
-            if (cfg.train.model == 'sgs'):
-                if not cfg.train.comp_model_ins_outs:
+            if (cfg.model == 'sgs'):
+                if not cfg.sgs.comp_model_ins_outs:
                     features = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("input123_py")),
                                   VN.vtk_to_numpy(polydata.GetPointData().GetArray("input456_py"))))
                     targets = np.hstack((VN.vtk_to_numpy(polydata.GetPointData().GetArray("output123_py")),
@@ -123,24 +129,24 @@ def load_data(cfg, rng):
         
         # Model specific data loading and manipulation
         mesh = None
-        if (cfg.train.model=='sgs'):
+        if (cfg.model=='sgs'):
             if (np.amin(data[:,0]) < 0 or np.amax(data[:,0]) > 1):
-                with open(cfg.train.name+"_scaling.dat", "w") as fh:
+                with open(cfg.name+"_scaling.dat", "w") as fh:
                     for i in range(6):
                         min_val = np.amin(data[:,i])
                         max_val = np.amax(data[:,i])
                         fh.write(f"{min_val:>8e} {max_val:>8e}\n")
                         data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
-        elif ("qcnn" in cfg.train.model):
-            extension = cfg.train.mesh_file.split(".")[-1]
+        elif ("qcnn" in cfg.model):
+            extension = cfg.qcnn.mesh_file.split(".")[-1]
             if "npy" in extension:
-                mesh = np.float32(np.load(cfg.train.mesh_file))
-            with open(cfg.train.name+"_scaling.dat", "w") as fh:
+                mesh = np.float32(np.load(cfg.qcnn.mesh_file))
+            with open(cfg.name+"_scaling.dat", "w") as fh:
                 for i in range(4):
                     min_val = np.amin(data[:,i,:])
                     max_val = np.amax(data[:,i,:])
                     fh.write(f"{min_val:>8e} {max_val:>8e}\n")
-                    data[:,i,:] = 1.0*(data[:,i,:] - min_val)/(max_val - min_val) - 0.0
+                    data[:,i,:] = 2.0*(data[:,i,:] - min_val)/(max_val - min_val) - 1.0
                 
     return data, mesh
 

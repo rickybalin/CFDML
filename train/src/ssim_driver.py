@@ -6,7 +6,7 @@ import hydra
 
 # smartsim and smartredis imports
 from smartsim import Experiment
-from smartsim.settings import RunSettings
+from smartsim.settings import RunSettings, PalsMpiexecSettings
 
 
 ## Define function to parse node list
@@ -20,23 +20,39 @@ def parseNodeList(fname):
 
 
 ## Co-located DB launch
-def launch_coDB(cfg):
+def launch_coDB(cfg, nodelist, nNodes):
+    # Print nodelist
+    if (nodelist is not None):
+        print(f"\nRunning on {nNodes} total nodes on Polaris")
+        print(nodelist, "\n")
+        hosts = ','.join(nodelist)
+
     # Initialize the SmartSim Experiment
     PORT = cfg.database.port
     exp = Experiment(cfg.database.exp_name, launcher=cfg.database.launcher)
 
     # Set the run settings, including the client executable and how to run it
-    client_exe = cfg.train.executable
-    run_settings = RunSettings(
-                   'python',
-                   exe_args=client_exe,
-                   run_command='mpirun',
-                   run_args={"-n" : cfg.run_args.mlprocs},
-                   env_vars=None
-                   )
+    client_exe = cfg.sim.executable
+    if (cfg.database.launcher=='local'):
+        run_settings = RunSettings(
+                           'python',
+                           exe_args=client_exe,
+                           run_command='mpirun',
+                           run_args={"-n" : cfg.run_args.simprocs},
+                           env_vars=None)
+    elif (cfg.database.launcher=='pbs'):
+        run_settings = PalsMpiexecSettings(
+                           client_exe,
+                           exe_args=None,
+                           run_args=None,
+                           env_vars=None)
+        run_settings.set_tasks(cfg.run_args.simprocs)
+        run_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
+        run_settings.set_hostlist(hosts)
+        run_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
 
     # Create the co-located database model
-    colo_model = exp.create_model("train", run_settings)
+    colo_model = exp.create_model("sim", run_settings)
     kwargs = {
         'maxclients': 100000,
         'threads_per_queue': 4, # set to 4 for improved performance
@@ -58,31 +74,73 @@ def launch_coDB(cfg):
                 port=PORT,
                 db_cpus=cfg.run_args.dbprocs_pn,
                 debug=False,
-                limit_app_cpus=False,
+                limit_app_cpus=True,
                 ifname=cfg.database.network_interface,
                 **kwargs
                 )
 
+    # Add the ML model
+    if (cfg.inference.model_path):
+        colo_model.add_ml_model('model',
+                                cfg.inference.backend,
+                                model=None,  # this is used if model is in memory
+                                model_path=cfg.inference.model_path,
+                                device=cfg.inference.device,
+                                batch_size=cfg.inference.batch,
+                                min_batch_size=cfg.inference.batch,
+                                devices_per_node=cfg.inference.devices_per_node,
+                                inputs=None, outputs=None )
+
     # Start the co-located model
-    exp.start(colo_model, block=True, summary=False)
+    block = False if cfg.train.executable else True
+    exp.start(colo_model, block=block, summary=False)
+
+    # Set up ML training
+    if (cfg.train.executable):
+        ml_exe = cfg.train.executable
+        if (cfg.train.config): ml_exe += f' --config-path {cfg.train.config}'
+        ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
+                        + f' online.db_launch={cfg.database.deployment}' \
+                        + f' online.simprocs={cfg.run_args.simprocs}' \
+                        + f' online.db_nodes={cfg.run_args.db_nodes}'
+        if (cfg.database.launcher=='local'):
+            run_settings_ML = RunSettings('python',
+                                          exe_args=ml_exe,
+                                          run_command='mpirun',
+                                          run_args={"-n" : cfg.run_args.mlprocs},
+                                          env_vars=None)
+        elif (cfg.database.launcher=='pbs'):
+            run_settings_ML = PalsMpiexecSettings('python', 
+                                                  exe_args=ml_exe, 
+                                                  run_args=None,
+                                                  env_vars=None)
+            run_settings_ML.set_tasks(cfg.run_args.mlprocs)
+            run_settings_ML.set_tasks_per_node(cfg.run_args.mlprocs_pn)
+            run_settings_ML.set_hostlist(hosts)
+            run_settings_ML.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
+
+        ml_model = exp.create_model("train_model", run_settings_ML)
+        exp.start(ml_model, block=True, summary=False)
 
 
 ## Clustered DB launch
 def launch_clDB(cfg, nodelist, nNodes):
     # Split nodes between the components
-    dbNodes = ','.join(nodelist[0: cfg.run_args.db_nodes])
-    dbNodes_list = nodelist[0: cfg.run_args.db_nodes]
-    simNodes = ','.join(nodelist[cfg.run_args.db_nodes: \
+    dbNodes_list = None
+    if (nodelist is not None):
+        dbNodes = ','.join(nodelist[0: cfg.run_args.db_nodes])
+        dbNodes_list = nodelist[0: cfg.run_args.db_nodes]
+        simNodes = ','.join(nodelist[cfg.run_args.db_nodes: \
                                  cfg.run_args.db_nodes + cfg.run_args.sim_nodes])
-    mlNodes = ','.join(nodelist[cfg.run_args.db_nodes + cfg.run_args.sim_nodes: \
+        mlNodes = ','.join(nodelist[cfg.run_args.db_nodes + cfg.run_args.sim_nodes: \
                                 cfg.run_args.db_nodes + cfg.run_args.sim_nodes + \
                                 cfg.run_args.ml_nodes])
-    print(f"Database running on {cfg.run_args.db_nodes} nodes:")
-    print(dbNodes)
-    print(f"Simulatiom running on {cfg.run_args.sim_nodes} nodes:")
-    print(simNodes)
-    print(f"ML running on {cfg.run_args.ml_nodes} nodes:")
-    print(mlNodes, "\n")
+        print(f"Database running on {cfg.run_args.db_nodes} nodes:")
+        print(dbNodes)
+        print(f"Simulatiom running on {cfg.run_args.sim_nodes} nodes:")
+        print(simNodes)
+        print(f"ML running on {cfg.run_args.ml_nodes} nodes:")
+        print(mlNodes, "\n")
 
     # Set up database and start it
     PORT = cfg.database.port
@@ -92,15 +150,17 @@ def launch_clDB(cfg, nodelist, nNodes):
         'maxclients': 100000,
         'threads_per_queue': 4, # set to 4 for improved performance
         'inter_op_parallelism': 1,
-        'intra_op_parallelism': 64,
+        'intra_op_parallelism': cfg.run_args.cores_pn,
         'cluster-node-timeout': 30000,
         }
     if (cfg.database.backend == "keydb"):
         kwargs['server_threads'] = 2 # keydb only
+    if (cfg.database.launcher=='local'): run_command = 'mpirun'
+    elif (cfg.database.launcher=='pbs'): run_command = 'mpiexec'
     db = exp.create_database(port=PORT, 
                              batch=False,
                              db_nodes=cfg.run_args.db_nodes,
-                             run_command='mpiexec',
+                             run_command=run_command,
                              interface=cfg.database.network_interface, 
                              hosts=dbNodes_list,
                              run_args=runArgs,
@@ -114,50 +174,62 @@ def launch_clDB(cfg, nodelist, nNodes):
 
     # Set the run settings, including the client executable and how to run it
     client_exe = cfg.sim.executable
-    run_settings = PalsMpiexecSettings(client_exe,
-                  exe_args=None,
-                  run_args=None
-                  )
-    run_settings.set_tasks(cfg.run_args.simprocs)
-    run_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
-    run_settings.set_hostlist(simNodes)
-    run_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
-    inf_exp = exp.create_model("phasta", run_settings)
+    if (cfg.database.launcher=='local'):
+        run_settings = RunSettings(client_exe,
+                                   exe_args=None,
+                                   run_command='mpirun',
+                                   run_args={"-n" : cfg.run_args.simprocs},
+                                   env_vars=None)
+    elif (cfg.database.launcher=='pbs'):
+        run_settings = PalsMpiexecSettings(client_exe,
+                                           exe_args=None,
+                                           run_args=None,
+                                           env_vars=None)
+        run_settings.set_tasks(cfg.run_args.simprocs)
+        run_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
+        run_settings.set_hostlist(simNodes)
+        run_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
+        client_exp = exp.create_model("client", run_settings)
    
     # Add the ML model
-    if (cfg.model.path):
-        device_tag = 'CPU' if cfg.model.device=='cpu' else 'GPU'
-        #inf_exp.add_ml_model('model',
-        #                     cfg.model.backend,
-        #                     model=None,  # this is used if model is in memory
-        #                     model_path=cfg.model.path,
-        #                     device=device_tag,
-        #                     batch_size=cfg.model.batch,
-        #                     min_batch_size=cfg.model.batch,
-        #                     devices_per_node=cfg.model.devices_per_node, # only for GPU
-        #                     inputs=None, outputs=None )
+    if (cfg.inference.model_path):
+        colo_model.add_ml_model('model',
+                                cfg.inference.backend,
+                                model=None,  # this is used if model is in memory
+                                model_path=cfg.inference.model_path,
+                                device=cfg.inference.device,
+                                batch_size=cfg.inference.batch,
+                                min_batch_size=cfg.inference.batch,
+                                devices_per_node=cfg.inference.devices_per_node,
+                                inputs=None, outputs=None )
 
     # Start the client model
-    print("Launching the Fortran client ...")
-    exp.start(inf_exp, summary=False, block=False)
+    print("Launching the client ...")
+    block = False if cfg.train.executable else True
+    exp.start(inf_exp, summary=False, block=block)
     print("Done\n")
     
     # Set up ML training
     if (cfg.train.executable):
         ml_exe = cfg.train.executable
-        run_args = {'': './affinity_ml.sh'}
-        run_settings_ML = PalsMpiexecSettings(
-                'python', 
-                exe_args=ml_exe, 
-                run_args=None,
-                env_vars=None
-                )
-        run_settings_ML.set_tasks(cfg.run_args.mlprocs)
-        run_settings_ML.set_tasks_per_node(cfg.run_args.mlprocs_pn)
-        run_settings_ML.set_hostlist(mlNodes)
-        run_settings_ML.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
+        ml_exe += f' ppn={cfg.run_args.mlprocs_pn}'
+        if (cfg.train.config): ml_exe += f' --config-path {cfg.train.config}'
+        if (cfg.database.launcher=='local'):
+            run_settings_ML = RunSettings('python',
+                                          exe_args=ml_exe,
+                                          run_command='mpirun',
+                                          run_args={"-n" : cfg.run_args.mlprocs},
+                                          env_vars=None)
+        elif (cfg.database.launcher=='pbs'):
+            run_settings_ML = PalsMpiexecSettings('python', 
+                                                  exe_args=ml_exe, 
+                                                  run_args=None,
+                                                  env_vars=None)
+            run_settings_ML.set_tasks(cfg.run_args.mlprocs)
+            run_settings_ML.set_tasks_per_node(cfg.run_args.mlprocs_pn)
+            run_settings_ML.set_hostlist(mlNodes)
+            run_settings_ML.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
-        # Start ML training model
         print("Launching the training client ...")
         ml_model = exp.create_model("train_model", run_settings_ML)
         exp.start(ml_model, block=True, summary=False)
@@ -170,15 +242,30 @@ def launch_clDB(cfg, nodelist, nNodes):
 
 
 ## Main function
-@hydra.main(version_base=None, config_path="./conf", config_name="config")
+@hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
 def main(cfg: DictConfig):
+    # Get nodes of this allocation (job)
+    nodelist = nNodes = None
+    if (cfg.database.launcher=='pbs'):
+        hostfile = os.getenv('PBS_NODEFILE')
+        nodelist, nNodes = parseNodeList(hostfile)
+
+    # Export KeyDB env variables if requested instead of Redis
+    if (cfg.database.backend == "keydb"):
+        stream = os.popen("which python")
+        prefix = stream.read().split("ssim")[0]
+        keydb_conf = prefix+"SmartSim/smartsim/_core/config/keydb.conf"
+        keydb_bin = prefix+"keydb/src/keydb-server"
+        os.environ['REDIS_PATH'] = keydb_bin
+        os.environ['REDIS_CONF'] = keydb_conf
+
     # Call appropriate launcher
     if (cfg.database.deployment == "colocated"):
         print(f"\nRunning {cfg.database.deployment} DB with {cfg.database.backend} backend\n")
-        launch_coDB(cfg)
+        launch_coDB(cfg, nodelist, nNodes)
     elif (cfg.database.deployment == "clustered"):
         print(f"\nRunning {cfg.database.deployment} DB with {cfg.database.backend} backend\n")
-        launch_clDB(cfg,nodelist,nNodes)
+        launch_clDB(cfg, nodelist, nNodes)
     else:
         print("\nERROR: Launcher is either colocated or clustered\n")
 

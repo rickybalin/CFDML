@@ -30,15 +30,15 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
     # Loop over mini-batches
     for batch_idx, data in enumerate(train_loader):
             # Offload batch data
-            if (cfg.train.device != 'cpu'):
-               data = data.to(cfg.train.device)
+            if (cfg.device != 'cpu'):
+               data = data.to(cfg.device)
 
             # Perform forward and backward passes
             rtime = perf_counter()
             optimizer.zero_grad()
-            if (cfg.train.distributed=='horovod'):
+            if (cfg.distributed=='horovod'):
                 loss = model.training_step(data)
-            elif (cfg.train.distributed=='ddp'):
+            elif (cfg.distributed=='ddp'):
                 loss = model.module.training_step(data)
             loss.backward()
             optimizer.step()
@@ -84,13 +84,13 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             # Offload batch data
-            if (cfg.train.device != 'cpu'):
-                data = data.to(cfg.train.device)
+            if (cfg.device != 'cpu'):
+                data = data.to(cfg.device)
 
             # Perform forward pass
-            if (cfg.train.distributed=='horovod'):
+            if (cfg.distributed=='horovod'):
                 acc, loss = model.validation_step(data, return_loss=True)
-            elif (cfg.train.distributed=='ddp'):
+            elif (cfg.distributed=='ddp'):
                 acc, loss = model.module.validation_step(data, return_loss=True)
             running_acc += acc.item()
             running_loss += loss.item()
@@ -111,7 +111,7 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
         print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
         sys.stdout.flush()
 
-    if (cfg.train.model=='sgs'):
+    if (cfg.model=='sgs'):
         valData = data[:,6:]
     else:
         valData = data
@@ -125,28 +125,28 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
 ### ================================================ ###
 
 ### Main online training loop driver
-def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
-    # Import Horovod if needed here too
-    if (cfg.train.distributed=='horovod'):
-        import horovod.torch as hvd
-
+def offlineTrainLoop(cfg, comm, t_data, model, data):
     # Set precision of model and data
-    if (cfg.train.precision == "fp32"):
+    if (cfg.precision == "fp32"):
+        model.float()
         data = torch.tensor(data, dtype=torch.float32)
-    elif (cfg.train.precision == "fp64"):
+    elif (cfg.precision == "fp64"):
         model.double()
         data = torch.tensor(data, dtype=torch.float64)
-    elif (cfg.train.precision == "bf16"):
+    elif (cfg.precision == "fp16"):
+        model.half()
+        data = torch.tensor(data, dtype=torch.float16)
+    elif (cfg.precision == "bf16"):
         model.bfloat16()
         data = torch.tensor(data, dtype=torch.bfloat16)
     
     # Offload entire data (this was actually slower...)
-    #if (cfg.train.device != 'cpu'):
-    #    data = data.to(cfg.train.device)
+    #if (cfg.device != 'cpu'):
+    #    data = data.to(cfg.device)
 
     # Split data and create datasets
     samples = data.shape[0]
-    nVal = m.floor(samples*cfg.train.validation_split)
+    nVal = m.floor(samples*cfg.validation_split)
     nTrain = samples-nVal
     dataset = OfflineDataset(data)
     trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
@@ -156,12 +156,12 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
     # - pin_memory=True - should be faster for GPU training
     # - num_workers > 1 - enables multi-process data loading 
     # - prefetch_factor >1 - enables pre-fetching of data
-    if (cfg.train.data_path == "synthetic"):
+    if (cfg.data_path == "synthetic"):
         train_sampler = None
         val_sampler = None
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.train.mini_batch, 
+        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
                                       shuffle=True, drop_last=True) #pin_memory=False, num_workers=0, prefetch_factor=None)
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.train.mini_batch, 
+        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
                                     drop_last=True)
     else:
         # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
@@ -169,27 +169,27 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
                                            shuffle=True, drop_last=True)
         val_sampler = DistributedSampler(valDataset, num_replicas=comm.size, rank=comm.rank,
                                          drop_last=True)  
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.train.mini_batch, 
+        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
                                   sampler=train_sampler)
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.train.mini_batch, 
+        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
                                 sampler=val_sampler)
 
     # Initialize optimizer
-    if (cfg.train.optimizer == "Adam"):
-        optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate*comm.size)
+    if (cfg.optimizer == "Adam"):
+        optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
         print("ERROR: only Adam optimizer implemented at the moment")
-    if (cfg.train.distributed=='horovod'):
+    if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
         optimizer = hvd.DistributedOptimizer(optimizer,
                               named_parameters=model.named_parameters(),op=hvd.mpi_ops.Sum)
 
     # Loop over epochs
-    for ep in range(cfg.train.epochs):
+    for ep in range(cfg.epochs):
         tic_l = perf_counter()
         if (comm.rank == 0):
-            print(f"\n Epoch {ep+1} of {cfg.train.epochs}")
+            print(f"\n Epoch {ep+1} of {cfg.epochs}")
             print("-------------------------------")
             sys.stdout.flush()
 
@@ -216,13 +216,13 @@ def offlineTrainLoop(cfg, comm, hvd_comm, t_data, model, data):
             t_data.i_val = t_data.i_val + 1
 
         # Check if tolerance on loss is satisfied
-        if (global_val_loss <= cfg.train.tolerance):
+        if (global_val_loss <= cfg.tolerance):
             if (comm.rank == 0):
                 print("\nConvergence tolerance met. Stopping training loop. \n")
             break
         
         # Check if max number of epochs is reached
-        if (ep >= cfg.train.epochs):
+        if (ep >= cfg.epochs):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             break
