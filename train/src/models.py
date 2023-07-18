@@ -41,8 +41,8 @@ class anisoSGS(nn.Module):
     def forward(self, x):
         for layer in self.net:
             x = layer(x)
-        #return self.net(x)
         return x
+        #return self.net(x)
 
     # Define the methods to do a training, validation and test step
     def training_step(self, batch):

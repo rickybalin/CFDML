@@ -6,7 +6,6 @@
 import sys
 from os.path import exists
 from time import perf_counter
-from smartredis import Client
 
 class SmartRedisClient:
     def __init__(self):
@@ -23,6 +22,11 @@ class SmartRedisClient:
 
     # Initializa client
     def init(self, cfg, comm, t_data):
+        try:
+            from smartredis import Client
+        except ModuleNotFoundError as err:
+            if comm.rank==0: print(err)
+
         # Read the address of the co-located database first
         if (cfg.online.db_launch=='colocated'):
             prefix = f'{cfg.online.simprocs}-procs_case/'
