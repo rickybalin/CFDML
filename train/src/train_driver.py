@@ -119,7 +119,8 @@ def main(cfg: DictConfig):
             torch.cuda.set_device(comm.rankl)
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
-            torch.xpu.set_device(comm.rankl)
+            xpu_id = comm.rankl//cfg.ppd
+            torch.xpu.set_device(xpu_id)
     if (cfg.device != 'cpu'):
         model.to(device)
         if ("qcnn" in cfg.model):

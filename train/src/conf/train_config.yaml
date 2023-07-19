@@ -1,5 +1,6 @@
 # General run config
 ppn: 1 # integer - number of MPI processes per node for ML training
+ppd: 1 # integer - number of MPI processes per device for ML training
 logging: "debug" # no, debug, verbose-perf - type of logging desired
 device: "cpu" # cpu, cuda, xpu - device to train on
 distributed: "ddp" # horovod, ddp - distributed training library
