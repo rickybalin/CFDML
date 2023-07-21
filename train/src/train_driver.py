@@ -57,7 +57,8 @@ def main(cfg: DictConfig):
         os.environ['MASTER_ADDR'] = master_addr
         os.environ['MASTER_PORT'] = str(2345)
         if (cfg.device=='cpu'): backend = 'gloo'
-        elif (cfg.device=='cuda'): backend = 'nccl'
+        elif (cfg.device=='cuda' and cfg.ppd==1): backend = 'nccl'
+        elif (cfg.device=='cuda' and cfg.ppd>1): backend = 'gloo'
         elif (cfg.device=='xpu'): backend = 'ccl'
         dist.init_process_group(backend,
                                 rank=int(comm.rank),
@@ -115,7 +116,8 @@ def main(cfg: DictConfig):
     torch.set_num_threads(1)
     if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
-            torch.cuda.set_device(comm.rankl)
+            cuda_id = comm.rankl//cfg.ppd
+            torch.cuda.set_device(cuda_id)
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
             xpu_id = comm.rankl//cfg.ppd
