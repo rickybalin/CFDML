@@ -25,7 +25,7 @@ from datasets import OfflineDataset
 def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
     model.train()
     num_batches = len(train_loader)
-    running_loss = 0
+    running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
 
     # Loop over mini-batches
     for batch_idx, data in enumerate(train_loader):
@@ -50,7 +50,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
                 t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
 
             # Update running loss
-            running_loss += loss.item()
+            running_loss += loss
 
             # Print data for some ranks only
             if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
@@ -60,7 +60,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
                 sys.stdout.flush()
 
     # Accumulate loss
-    running_loss = running_loss / num_batches
+    running_loss = running_loss.item() / num_batches
     loss_avg = metric_average(comm, running_loss)
     if comm.rank == 0: 
         print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e}")
@@ -77,8 +77,8 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
 
     model.eval()
     num_batches = len(val_loader)
-    running_acc = 0.0
-    running_loss = 0.0
+    running_acc = torch.tensor([0.0],device=torch.device(cfg.device))
+    running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
 
     # Loop over batches, which in this case are the tensors to grab from database
     with torch.no_grad():
@@ -92,8 +92,8 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
                 acc, loss = model.validation_step(data, return_loss=True)
             elif (cfg.distributed=='ddp'):
                 acc, loss = model.module.validation_step(data, return_loss=True)
-            running_acc += acc.item()
-            running_loss += loss.item()
+            running_acc += acc
+            running_loss += loss
                 
             # Print data for some ranks only
             if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
@@ -103,9 +103,9 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
                 sys.stdout.flush()
 
     # Accumulate accuracy measures
-    running_acc = running_acc / num_batches
+    running_acc = running_acc.item() / num_batches
     acc_avg = metric_average(comm, running_acc)
-    running_loss = running_loss / num_batches
+    running_loss = running_loss.item() / num_batches
     loss_avg = metric_average(comm, running_loss)
     if comm.rank == 0:
         print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")

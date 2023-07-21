@@ -26,7 +26,7 @@ def online_train(comm, model, train_sampler, train_tensor_loader, optimizer, epo
                  t_data, client, cfg):
 
     model.train()
-    running_loss = 0.0
+    running_loss = torch.tensor([0.0], device=torch.device(cfg.device))
     train_sampler.set_epoch(epoch)
 
     # Loop over batches, which in this case are the tensors to grab from database
@@ -71,7 +71,7 @@ def online_train(comm, model, train_sampler, train_tensor_loader, optimizer, epo
             t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
 
             # Update running loss
-            running_loss += loss.item()
+            running_loss += loss
 
             # Print data for some ranks only
             if (comm.Get_rank()%20==0 and (batch_idx+1)%50==0):
@@ -83,7 +83,7 @@ def online_train(comm, model, train_sampler, train_tensor_loader, optimizer, epo
                 sys.stdout.flush()
 
     # Accumulate loss
-    running_loss = running_loss / len(train_tensor_loader) / len(train_loader)
+    running_loss = running_loss.item() / len(train_tensor_loader) / len(train_loader)
     loss_avg = metric_average(comm, running_loss, comm.Get_size())
     if comm.Get_rank() == 0: 
         print(f"Training set: | Epoch: {epoch} | Average loss: {loss_avg:>8e} \n")
@@ -100,9 +100,8 @@ def online_validate(comm, model, val_sampler, val_tensor_loader, epoch, mini_bat
                     client, cfg):
 
     model.eval()
-    running_acc = 0.0
-    running_corr = 0.0
-    running_loss = 0.0
+    running_acc = torch.tensor([0.0], device=torch.device(cfg.device))
+    running_loss = torch.tensor([0.0], device=torch.device(cfg.device))
 
     # Loop over batches, which in this case are the tensors to grab from database
     with torch.no_grad():
@@ -130,8 +129,8 @@ def online_validate(comm, model, val_sampler, val_tensor_loader, epoch, mini_bat
 
                 # Perform forward pass
                 acc, loss = model.module.validation_step(dbdata, return_loss=True)
-                running_acc += acc.item()
-                running_loss += loss.item()
+                running_acc += acc
+                running_loss += loss
                 
                 # Print data for some ranks only
                 if (comm.Get_rank()%20==0 and (batch_idx+1)%50==0):
@@ -142,9 +141,9 @@ def online_validate(comm, model, val_sampler, val_tensor_loader, epoch, mini_bat
                     sys.stdout.flush()
 
     # Accumulate accuracy measures
-    running_acc = running_acc / len(val_tensor_loader) / len(val_loader)
+    running_acc = running_acc.item() / len(val_tensor_loader) / len(val_loader)
     acc_avg = metric_average(comm, running_acc, comm.Get_size())
-    running_loss = running_loss / len(val_tensor_loader) / len(val_loader)
+    running_loss = running_loss.item() / len(val_tensor_loader) / len(val_loader)
     loss_avg = metric_average(comm, running_loss, comm.Get_size())
     if comm.Get_rank() == 0:
         print(f"Validation set: | Epoch: {epoch} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
@@ -161,9 +160,8 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
                  client, cfg):
 
     model.eval()
-    running_acc = 0.0
-    running_corr = 0.0
-    running_loss = 0.0
+    running_acc = torch.tensor([0.0], device=torch.device(cfg.device))
+    running_loss = torch.tensor([0.0], device=torch.device(cfg.device))
 
     # Loop over batches, which in this case are the tensors to grab from database
     with torch.no_grad():
@@ -191,8 +189,8 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
 
                 # Perform forward pass
                 acc, loss = model.module.test_step(dbdata, return_loss=True)
-                running_acc += acc.item()
-                running_loss += loss.item()
+                running_acc += acc
+                running_loss += loss
 
                 # Print data for some ranks only
                 if (comm.Get_rank()%20==0 and (batch_idx+1)%50==0):
@@ -202,9 +200,9 @@ def oneline_test(comm, model, test_sampler, test_tensor_loader, mini_batch,
                           f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
 
     # Accumulate accuracy measures
-    running_acc = running_acc / len(test_tensor_loader) / len(test_loader)
+    running_acc = running_acc.item() / len(test_tensor_loader) / len(test_loader)
     acc_avg = metric_average(comm, running_acc, comm.Get_size())
-    running_loss = running_loss / len(test_tensor_loader) / len(test_loader)
+    running_loss = running_loss.item() / len(test_tensor_loader) / len(test_loader)
     loss_avg = metric_average(comm, running_loss, comm.Get_size())
     if comm.Get_rank() == 0:
         print(f"Testing set: Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
