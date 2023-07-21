@@ -44,7 +44,6 @@ def main(cfg: DictConfig):
     # Import Horovod and initialize
     hvd_comm = None
     if (cfg.distributed=='horovod'):
-        #import horovod.torch as hvd
         hvd_comm = utils.HVD_COMM()
         hvd_comm.init(print_hello=print_hello)
     elif (cfg.distributed=='ddp'):

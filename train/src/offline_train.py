@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.utils.data import random_split, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 try:
-    import horovod as hvd
+    import horovod.torch as hvd
 except:
     pass
 
@@ -183,7 +183,9 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
         optimizer = hvd.DistributedOptimizer(optimizer,
-                              named_parameters=model.named_parameters(),op=hvd.mpi_ops.Sum)
+                                             named_parameters=model.named_parameters(),
+                                             op=hvd.mpi_ops.Sum,
+                                             num_groups=1)
 
     # Loop over epochs
     for ep in range(cfg.epochs):

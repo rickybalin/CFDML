@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 try:
-    import horovod as hvd
+    import horovod.torch as hvd
 except:
     pass
 
