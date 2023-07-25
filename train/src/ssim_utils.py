@@ -19,6 +19,7 @@ class SmartRedisClient:
         self.head_rank = None
         self.tensor_batch = None
         self.nfilters = 1
+        self.dataOverWr = None
 
     # Initializa client
     def init(self, cfg, comm, t_data):
@@ -41,7 +42,6 @@ class SmartRedisClient:
             sys.stdout.flush()
         if (cfg.online.db_nodes==1):
             rtime = perf_counter()
-            print(address)
             sys.stdout.flush()
             self.client = Client(address=address, cluster=False)
             rtime = perf_counter() - rtime
@@ -130,9 +130,9 @@ class SmartRedisClient:
                 t_data.t_meta = t_data.t_meta + rtime
                 t_data.i_meta = t_data.i_meta + 1 
                 break
-        dataOverWr = tmp[0]
+        self.dataOverWr = tmp[0]
         if (comm.rank==0):
-            if (dataOverWr>0.5): 
+            if (self.dataOverWr>0.5): 
                 print("Training data is overwritten in DB \n")
             else:
                 print("Training data is NOT overwritten in DB \n")

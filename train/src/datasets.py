@@ -96,7 +96,7 @@ class KeyDataset(Dataset):
 ### The input is a list of rank numbers corresponding to tensors in the database
 ### Used when the ranks are pre-determined and passed in as a list, was made
 ### to enable easy splitting of database tensors into training, validation, testing
-class PhastaKeyMFDataset(Dataset):
+class KeyMFDataset(Dataset):
     def __init__(self,tensor_list,nrankl,head_rank,filters):
         self.tensors = tensor_list
         self.size = nrankl
@@ -114,7 +114,8 @@ class PhastaKeyMFDataset(Dataset):
         return f"y.{rank_id}.{delta}"
     
 
-# Dataset for offline training
+### Dataset for offline training
+### Classic map-stype dataset that returns the indexed array
 class OfflineDataset(Dataset):
     def __init__(self, data):
         self.data = data

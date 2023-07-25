@@ -151,7 +151,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     dataset = OfflineDataset(data)
     trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
 
-    # Data parallel loader
+    # Data loader
     # Try:
     # - pin_memory=True - should be faster for GPU training
     # - num_workers > 1 - enables multi-process data loading 
@@ -160,7 +160,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         train_sampler = None
         val_sampler = None
         train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                      shuffle=True, drop_last=True) #pin_memory=False, num_workers=0, prefetch_factor=None)
+                                      shuffle=True, drop_last=True) 
         val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
                                     drop_last=True)
     else:

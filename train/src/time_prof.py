@@ -100,24 +100,24 @@ class timeStats:
 
         # Online training metrics
         if cfg.online.db_launch:
-            avg, std, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
+            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
             if comm.rank==0:
                 print(f"tSSIMInit : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
             avg, std = self.computeStats_i(comm, self.i_init)
             if comm.rank==0:
                 print(f"iSSIMInit : min [.,.], max [.,.], avg [{avg},.], std [{std},.]")
 
-            avg, std, min_arr, max_arr = self.computeStats_f(comm, self.t_meta)
+            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_meta)
             if comm.rank==0:
                 print(f"tSSIMMeta : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
             avg, std = self.computeStats_i(comm, self.i_meta)
             if comm.rank==0:
                 print(f"iSSIMMeta : min [.,.], max [.,.], avg [{avg},.], std [{std},.]")
 
-            avg, std, min_arr, max_arr = self.computeStats_f(comm, self.t_getBatch)
+            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_getBatch)
             if comm.rank==0:
                 print(f"tSSIMgetBatch : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
-            avg, std, min_arr, max_arr = self.computeStats_f(comm, self.t_AveGetBatch)
+            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_AveGetBatch)
             if comm.rank==0:
                 print(f"tSSIMaveGetBatch : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
             avg, std = self.computeStats_i(comm, self.i_getBatch)
