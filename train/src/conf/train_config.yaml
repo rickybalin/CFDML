@@ -15,7 +15,7 @@ learning_rate: 0.0001 # float - serial leranring rate
 tolerance: 1.0e-8 # float - convergence tolerance of validation loss
 validation_split: 0.20 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
-precision: "fp32" # fp32, fp64, bf64 - precision for training
+precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training
 name: "./NNmodel" # string - name used to save ML model
 save_db: False # True, False - save database contents at the end of trainint to .rdb file
 

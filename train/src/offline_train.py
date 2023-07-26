@@ -127,7 +127,7 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
 ### Main online training loop driver
 def offlineTrainLoop(cfg, comm, t_data, model, data):
     # Set precision of model and data
-    if (cfg.precision == "fp32"):
+    if (cfg.precision == "fp32" or cfg.precision == "tf32"):
         model.float()
         data = torch.tensor(data, dtype=torch.float32)
     elif (cfg.precision == "fp64"):
