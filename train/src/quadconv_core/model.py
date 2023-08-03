@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from .modules import Encoder, Decoder
-from .loss import relative_re
+from .loss import relative_re, root_relative_re, RRELoss
 
 '''
 Quadrature convolution autoencoder.
@@ -48,10 +48,12 @@ class Model(nn.Module):
         self.mesh = mesh.construct(point_seq, mirror=True, quad_map=quad_map, quad_args=quad_args)
 
         #loss function
-        self.loss_fn = getattr(nn, loss_fn)()
+        if (loss_fn=="MSELoss"):
+            self.loss_fn = getattr(nn, loss_fn)()
+        elif (loss_fn=="RRELoss"):
+            self.loss_fn = RRELoss()
 
         #model pieces
-        #self.output_activation = output_activation()
         self.output_activation = getattr(nn, output_activation)()
 
         self.encoder = Encoder(spatial_dim=spatial_dim, **kwargs)
@@ -131,7 +133,7 @@ class Model(nn.Module):
         pred = self(batch)
 
         #compute relative reconstruction error
-        error = relative_re(pred, batch)
+        error = root_relative_re(pred, batch)
         error =  torch.mean(error)
 
         if return_loss:
@@ -152,9 +154,9 @@ class Model(nn.Module):
         pred = self(batch)
 
         #compute relative reconstruction error
-        error = relative_re(pred, batch)
-        error =  torch.mean(error) #, torch.mean(error, dim=0)
-        
+        error = root_relative_re(pred, batch)
+        error =  torch.mean(error, dim=0)
+ 
         if return_loss:
             # compute loss to compare agains training
             loss = self.loss_fn(pred, batch)

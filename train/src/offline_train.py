@@ -53,7 +53,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
             running_loss += loss
 
             # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
+            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%10==0):
                 print(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
                       f'[{batch_idx+1}/{num_batches}] | ' + \
                       f'Loss: {loss.item():>8e}')
@@ -96,7 +96,7 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
             running_loss += loss
                 
             # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank%20==0 and (batch_idx)%50==0):
+            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
                 print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
                         f'[{batch_idx+1}/{num_batches}] | ' + \
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
@@ -148,6 +148,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     samples = data.shape[0]
     nVal = m.floor(samples*cfg.validation_split)
     nTrain = samples-nVal
+    if (nVal==0 and cfg.validation_split>0):
+        if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
     dataset = OfflineDataset(data)
     trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
 
@@ -179,6 +181,9 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
         print("ERROR: only Adam optimizer implemented at the moment")
+    if (cfg.scheduler == "Plateau"):
+        if (comm.rank==0): print("Applying plateau scheduler\n")
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
     if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
@@ -208,14 +213,22 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             t_data.i_train = t_data.i_train + 1
 
         # Validate
-        tic_v = perf_counter()
-        global_acc, global_val_loss, valData = offline_validate(comm, model, 
+        if (nVal==0):
+            global_val_loss = global_loss
+            valData = torch.from_numpy(data[cfg.mini_batch])
+        else:
+            tic_v = perf_counter()
+            global_acc, global_val_loss, valData = offline_validate(comm, model, 
                                                                 val_dataloader, ep, cfg)
-        toc_v = perf_counter()
-        if (ep>1):
-            t_data.t_val = t_data.t_val + (toc_v - tic_v)
-            t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
-            t_data.i_val = t_data.i_val + 1
+            toc_v = perf_counter()
+            if (ep>1):
+                t_data.t_val = t_data.t_val + (toc_v - tic_v)
+                t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
+                t_data.i_val = t_data.i_val + 1
+
+        # Apply scheduler
+        if (cfg.scheduler == "Plateau"):
+            scheduler.step(global_val_loss)
 
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.tolerance):

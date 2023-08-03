@@ -11,10 +11,11 @@ repeatability: False # True, False - make training deterministic
 # Training hyperparameters config
 epochs: 10 # integer - max number of epochs for training
 mini_batch: 1 # integer - mini batch size for SGD update
-learning_rate: 0.0001 # float - serial leranring rate
+learning_rate: 0.001 # float - serial leranring rate
 tolerance: 1.0e-8 # float - convergence tolerance of validation loss
 validation_split: 0.20 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
+scheduler: "None" # None,Plateau - optimizer scheduler to be used
 precision: "fp32" # fp32, fp64, bf64 - precision for training
 name: "./NNmodel" # string - name used to save ML model
 save_db: False # True, False - save database contents at the end of trainint to .rdb file

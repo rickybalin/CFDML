@@ -142,7 +142,7 @@ def load_data(cfg, rng):
             if "npy" in extension:
                 mesh = np.float32(np.load(cfg.qcnn.mesh_file))
             with open(cfg.name+"_scaling.dat", "w") as fh:
-                for i in range(4):
+                for i in range(cfg.qcnn.channels):
                     min_val = np.amin(data[:,i,:])
                     max_val = np.amax(data[:,i,:])
                     fh.write(f"{min_val:>8e} {max_val:>8e}\n")

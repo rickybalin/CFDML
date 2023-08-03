@@ -49,8 +49,8 @@ def online_train(comm, model, train_tensor_loader, optimizer, epoch,
         t_data.t_AveGetBatch = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch
 
         # Create mini-batch dataset and loader
-        mbdata = MiniBatchDataset(concat_tensor)
-        train_loader = DataLoader(mbdata, shuffle=True, batch_size=cfg.mini_batch)
+        mb_dataset = MiniBatchDataset(concat_tensor)
+        train_loader = DataLoader(mb_dataset, shuffle=True, batch_size=cfg.mini_batch)
 
         # Loop over mini-batches
         for batch_idx, dbdata in enumerate(train_loader):
@@ -77,7 +77,7 @@ def online_train(comm, model, train_tensor_loader, optimizer, epoch,
             running_loss += loss
 
             # Print data for some ranks only
-            if (comm.rank%20==0 and (batch_idx+1)%50==0):
+            if (comm.rank==0 and (batch_idx)%50==0):
                 print(f'{comm.rank}: Train Epoch: {epoch} | ' + \
                       f'[{tensor_idx+1}/{len(train_tensor_loader)}] | ' + \
                       f'[{batch_idx+1}/{len(train_loader)}] | ' + \
@@ -139,7 +139,7 @@ def online_validate(comm, model, val_tensor_loader, epoch, mini_batch,
                 running_loss += loss
                 
                 # Print data for some ranks only
-                if (comm.rank%20==0 and (batch_idx+1)%50==0):
+                if (comm.rank==0 and (batch_idx)%50==0):
                     print(f'{comm.rank}: Validation Epoch: {epoch} | ' + \
                           f'[{tensor_idx+1}/{len(val_tensor_loader)}] | ' + \
                           f'[{batch_idx+1}/{len(val_loader)}] | ' + \
@@ -166,7 +166,7 @@ def online_test(comm, model, test_tensor_loader, mini_batch,
                  client, cfg):
 
     model.eval()
-    running_acc = torch.tensor([0.0], device=torch.device(cfg.device))
+    running_acc = torch.tensor([0.0, 0.0, 0.0, 0.0], device=torch.device(cfg.device))
     running_loss = torch.tensor([0.0], device=torch.device(cfg.device))
 
     # Loop over batches, which in this case are the tensors to grab from database
@@ -202,19 +202,19 @@ def online_test(comm, model, test_tensor_loader, mini_batch,
                 running_loss += loss
 
                 # Print data for some ranks only
-                if (comm.rank%20==0 and (batch_idx+1)%50==0):
+                if (comm.rank==0 and (batch_idx)%50==0):
                     print(f'{comm.rank}: Testing | ' + \
                           f'[{tensor_idx+1}/{len(test_tensor_loader)}] | ' + \
                           f'[{batch_idx+1}/{len(test_loader)}] | ' + \
-                          f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
+                          f'Accuracy: {acc.cpu().tolist()} | Loss {loss.item():>8e}')
 
     # Accumulate accuracy measures
-    running_acc = running_acc.item() / len(test_tensor_loader) / len(test_loader)
-    acc_avg = metric_average(comm, running_acc)
     running_loss = running_loss.item() / len(test_tensor_loader) / len(test_loader)
     loss_avg = metric_average(comm, running_loss)
+    running_acc = running_acc.cpu().numpy() / len(test_tensor_loader) / len(test_loader)
+    acc_avg = metric_average(comm, running_acc)
     if comm.rank == 0:
-        print(f"Testing set: Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
+        print(f"Testing set: Average accuracy: {acc_avg} | Average Loss: {loss_avg:>8e}")
 
     if (cfg.model=='sgs'):
         testData = dbdata[:, model.module.ndOut:]
