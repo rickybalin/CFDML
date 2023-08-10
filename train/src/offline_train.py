@@ -179,8 +179,10 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
+    if (cfg.optimizer == "RAdam"):
+        optimizer = optim.RAdam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
-        print("ERROR: only Adam optimizer implemented at the moment")
+        print("ERROR: optimizer not implemented at the moment")
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)

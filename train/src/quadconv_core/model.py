@@ -18,6 +18,7 @@ Input:
     optimizer: optimizer specification
     learning_rate: learning rate
     noise_scale: scale of noise to be added to latent representation in training
+    internal_activation: activation of internal layers
     output_activation: final activation
     kwargs: keyword arguments to be passed to encoder and decoder
 '''
@@ -33,7 +34,8 @@ class Model(nn.Module):
             optimizer = "Adam",
             learning_rate = 1e-2,
             noise_scale = 0.0,
-            output_activation = nn.Tanh,
+            internal_activation = "CELU",
+            output_activation = "Tanh",
             load_mesh_weights = [True],
             **kwargs
         ):
@@ -53,11 +55,18 @@ class Model(nn.Module):
         elif (loss_fn=="RRELoss"):
             self.loss_fn = RRELoss()
 
-        #model pieces
+        #activations
+        self.internal_activation = getattr(nn, internal_activation)
         self.output_activation = getattr(nn, output_activation)()
 
-        self.encoder = Encoder(spatial_dim=spatial_dim, **kwargs)
-        self.decoder = Decoder(spatial_dim=spatial_dim, **kwargs)
+        self.encoder = Encoder(spatial_dim=spatial_dim, 
+                               forward_activation=self.internal_activation,
+                               latent_activation=self.internal_activation,
+                               **kwargs)
+        self.decoder = Decoder(spatial_dim=spatial_dim,
+                               forward_activation=self.internal_activation,
+                               latent_activation=self.internal_activation,
+                               **kwargs)
 
         #
         if len(load_mesh_weights) == 1:
