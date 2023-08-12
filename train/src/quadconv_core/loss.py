@@ -34,6 +34,10 @@ def relative_re(input, target, reduction="mean"):
 
     return n/d
 
+def root_relative_re(input, target, reduction="mean"):
+
+    return torch.sqrt(relative_re(input, target))
+
 class RRELoss(nn.Module):
 
     def __init__(self, reduction="mean"):
@@ -43,10 +47,3 @@ class RRELoss(nn.Module):
 
     def forward(self, input, target):
         return torch.mean(relative_re(input, target, self.reduction))
-
-def root_relative_re(input, target, reduction="mean"):
-
-    n = torch.sum((input-target)**2, dim=(2))
-    d = torch.sum((target)**2, dim=(2))
-
-    return torch.sqrt(n/d)

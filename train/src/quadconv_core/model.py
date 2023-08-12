@@ -50,10 +50,10 @@ class Model(nn.Module):
         self.mesh = mesh.construct(point_seq, mirror=True, quad_map=quad_map, quad_args=quad_args)
 
         #loss function
-        if (loss_fn=="MSELoss"):
-            self.loss_fn = getattr(nn, loss_fn)()
-        elif (loss_fn=="RRELoss"):
+        if loss_fn == "RRELoss":
             self.loss_fn = RRELoss()
+        else:
+            self.loss_fn = getattr(nn, loss_fn)()
 
         #activations
         self.internal_activation = getattr(nn, internal_activation)
@@ -143,7 +143,7 @@ class Model(nn.Module):
 
         #compute relative reconstruction error
         error = root_relative_re(pred, batch)
-        error =  torch.mean(error)
+        error = torch.mean(error)
 
         if return_loss:
             # compute loss to compare agains training
@@ -164,7 +164,7 @@ class Model(nn.Module):
 
         #compute relative reconstruction error
         error = root_relative_re(pred, batch)
-        error =  torch.mean(error, dim=0)
+        error = torch.mean(error, dim=0)
  
         if return_loss:
             # compute loss to compare agains training

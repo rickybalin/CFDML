@@ -52,6 +52,7 @@ class Encoder(nn.Module):
 
         #build network
         self.init_layer = QuadConv(spatial_dim = spatial_dim, **arg_stack[0])
+        self.init_activation = forward_activation()
 
         self.qcnn = nn.Sequential()
 
@@ -79,7 +80,7 @@ class Encoder(nn.Module):
     Forward
     '''
     def forward(self, mesh, x):
-        x = self.init_layer(mesh, x)
+        x = self.init_activation(self.init_layer(mesh, x))
         _, x = self.qcnn((mesh, x))
         x = self.flat(x)
         output = self.linear(x)
