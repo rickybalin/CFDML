@@ -17,6 +17,7 @@ validation_split: 0.20 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
 scheduler: "None" # None,Plateau - optimizer scheduler to be used
 precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training
+mixed_precision: False # True, False - enable automatic mixed precision
 name: "./NNmodel" # string - name used to save ML model
 save_db: False # True, False - save database contents at the end of trainint to .rdb file
 

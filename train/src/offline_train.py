@@ -14,6 +14,11 @@ import torch.optim as optim
 from torch.utils.data import random_split, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 try:
+    from torch.cuda.amp import autocast, GradScaler
+    from torch.xpu.amp import autocast, GradScaler
+except:
+    pass
+try:
     import horovod.torch as hvd
 except:
     pass
@@ -22,7 +27,8 @@ from utils import metric_average
 from datasets import OfflineDataset
 
 ### Train the model
-def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
+def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
+                  epoch, t_data, cfg):
     model.train()
     num_batches = len(train_loader)
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
@@ -36,12 +42,18 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
             # Perform forward and backward passes
             rtime = perf_counter()
             optimizer.zero_grad()
-            if (cfg.distributed=='horovod'):
-                loss = model.training_step(data)
-            elif (cfg.distributed=='ddp'):
-                loss = model.module.training_step(data)
-            loss.backward()
-            optimizer.step()
+            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                if (cfg.distributed=='horovod'):
+                    loss = model.training_step(data)
+                elif (cfg.distributed=='ddp'):
+                    loss = model.module.training_step(data)
+            if (cfg.mixed_precision):
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
             rtime = perf_counter() - rtime
             if (epoch>1):
                 t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
@@ -73,7 +85,7 @@ def offline_train(comm, model, train_loader, optimizer, epoch, t_data, cfg):
 ### ================================================ ###
 
 ### Validate the model
-def offline_validate(comm, model, val_loader, epoch, cfg):
+def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
     model.eval()
     num_batches = len(val_loader)
@@ -88,10 +100,11 @@ def offline_validate(comm, model, val_loader, epoch, cfg):
                 data = data.to(cfg.device)
 
             # Perform forward pass
-            if (cfg.distributed=='horovod'):
-                acc, loss = model.validation_step(data, return_loss=True)
-            elif (cfg.distributed=='ddp'):
-                acc, loss = model.module.validation_step(data, return_loss=True)
+            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                if (cfg.distributed=='horovod'):
+                    acc, loss = model.validation_step(data, return_loss=True)
+                elif (cfg.distributed=='ddp'):
+                    acc, loss = model.module.validation_step(data, return_loss=True)
             running_acc += acc
             running_loss += loss
                 
@@ -139,6 +152,15 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     elif (cfg.precision == "bf16"):
         model.bfloat16()
         data = torch.tensor(data, dtype=torch.bfloat16)
+    if (cfg.mixed_precision):
+        scaler = GradScaler(enabled=True)
+        if (cfg.device == "cuda"):
+            mixed_dtype = torch.float16
+        elif (cfg.device == "xpu"):
+            mixed_dtype = torch.bfloat16
+    else:
+        scaler = None
+        mixed_dtype = None
     
     # Offload entire data (this was actually slower...)
     #if (cfg.device != 'cpu'):
@@ -179,7 +201,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
-    if (cfg.optimizer == "RAdam"):
+    elif (cfg.optimizer == "RAdam"):
         optimizer = optim.RAdam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
         print("ERROR: optimizer not implemented at the moment")
@@ -207,7 +229,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             train_sampler.set_epoch(ep)
         tic_t = perf_counter()
         global_loss, t_data = offline_train(comm, model, train_dataloader, 
-                                            optimizer, ep, t_data, cfg)
+                                            optimizer, scaler, mixed_dtype,
+                                            ep, t_data, cfg)
         toc_t = perf_counter()
         if (ep>1):
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
@@ -221,7 +244,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         else:
             tic_v = perf_counter()
             global_acc, global_val_loss, valData = offline_validate(comm, model, 
-                                                                val_dataloader, ep, cfg)
+                                                                val_dataloader, 
+                                                                mixed_dtype, ep, cfg)
             toc_v = perf_counter()
             if (ep>1):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)

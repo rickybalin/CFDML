@@ -14,6 +14,11 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
 try:
+    from torch.cuda.amp import autocast, GradScaler
+    from torch.xpu.amp import autocast, GradScaler
+except:
+    pass
+try:
     import horovod.torch as hvd
 except:
     pass
@@ -23,8 +28,8 @@ from datasets import MiniBatchDataset, KeyDataset
 
 
 ### Train the model
-def online_train(comm, model, train_tensor_loader, optimizer, epoch,
-                 t_data, client, cfg):
+def online_train(comm, model, train_tensor_loader, optimizer, scaler, mixed_dtype, 
+                 epoch, t_data, client, cfg):
 
     model.train()
     running_loss = torch.tensor([0.0], device=torch.device(cfg.device))
@@ -61,12 +66,18 @@ def online_train(comm, model, train_tensor_loader, optimizer, epoch,
             # Perform forward and backward passes
             rtime = perf_counter()
             optimizer.zero_grad()
-            if (cfg.distributed=='horovod'):
-                loss = model.training_step(dbdata)
-            elif (cfg.distributed=='ddp'):
-                loss = model.module.training_step(dbdata)
-            loss.backward()
-            optimizer.step()
+            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                if (cfg.distributed=='horovod'):
+                    loss = model.training_step(dbdata)
+                elif (cfg.distributed=='ddp'):
+                    loss = model.module.training_step(dbdata)
+            if (cfg.mixed_precision):
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
             rtime = perf_counter() - rtime
             t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
             t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
@@ -99,7 +110,7 @@ def online_train(comm, model, train_tensor_loader, optimizer, epoch,
 ### ================================================ ###
 
 ### Validate the model
-def online_validate(comm, model, val_tensor_loader, epoch, mini_batch, 
+def online_validate(comm, model, val_tensor_loader, mixed_dtype, epoch, 
                     client, cfg):
 
     model.eval()
@@ -122,7 +133,7 @@ def online_validate(comm, model, val_tensor_loader, epoch, mini_batch,
 
             # Create mini-batch dataset and loader
             mbdata = MiniBatchDataset(concat_tensor)
-            val_loader = torch.utils.data.DataLoader(mbdata, batch_size=mini_batch)
+            val_loader = torch.utils.data.DataLoader(mbdata, batch_size=cfg.mini_batch)
     
             # Loop over mini-batches
             for batch_idx, dbdata in enumerate(val_loader):
@@ -131,10 +142,11 @@ def online_validate(comm, model, val_tensor_loader, epoch, mini_batch,
                     dbdata = dbdata.to(cfg.device)
 
                 # Perform forward pass
-                if (cfg.distributed=='horovod'):
-                    acc, loss = model.validation_step(dbdata, return_loss=True)
-                elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.validation_step(dbdata, return_loss=True)
+                with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                    if (cfg.distributed=='horovod'):
+                        acc, loss = model.validation_step(dbdata, return_loss=True)
+                    elif (cfg.distributed=='ddp'):
+                        acc, loss = model.module.validation_step(dbdata, return_loss=True)
                 running_acc += acc
                 running_loss += loss
                 
@@ -162,7 +174,7 @@ def online_validate(comm, model, val_tensor_loader, epoch, mini_batch,
 ### ================================================ ###
 
 ### Test the model
-def online_test(comm, model, test_tensor_loader, mini_batch, 
+def online_test(comm, model, test_tensor_loader, mixed_dtype,
                  client, cfg):
 
     model.eval()
@@ -185,7 +197,7 @@ def online_test(comm, model, test_tensor_loader, mini_batch,
 
             # Create mini-batch dataset and loader
             mbdata = MiniBatchDataset(concat_tensor)
-            test_loader = torch.utils.data.DataLoader(mbdata, batch_size=mini_batch)
+            test_loader = torch.utils.data.DataLoader(mbdata, batch_size=cfg.mini_batch)
     
             # Loop over mini-batches
             for batch_idx, dbdata in enumerate(test_loader):
@@ -194,10 +206,11 @@ def online_test(comm, model, test_tensor_loader, mini_batch,
                     dbdata = dbdata.to(cfg.device)
 
                 # Perform forward pass
-                if (cfg.distributed=='horovod'):
-                    acc, loss = model.test_step(dbdata, return_loss=True)
-                elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.test_step(dbdata, return_loss=True)
+                with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                    if (cfg.distributed=='horovod'):
+                        acc, loss = model.test_step(dbdata, return_loss=True)
+                    elif (cfg.distributed=='ddp'):
+                        acc, loss = model.module.test_step(dbdata, return_loss=True)
                 running_acc += acc
                 running_loss += loss
 
@@ -233,12 +246,32 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     istep = -1 # initialize the simulation step number to 0
     iepoch = 1 # epoch number
     rerun_check = 1 # 0 means quit training
-    
+
+    # Set precision of model and data
+    if (cfg.precision == "fp32" or cfg.precision == "tf32"): model.float()
+    elif (cfg.precision == "fp64"): model.double()
+    elif (cfg.precision == "fp16"): model.half()
+    elif (cfg.precision == "bf16"): model.bfloat16()
+    if (cfg.mixed_precision):
+        scaler = GradScaler(enabled=True)
+        if (cfg.device == "cuda"):
+            mixed_dtype = torch.float16
+        elif (cfg.device == "xpu"):
+            mixed_dtype = torch.bfloat16
+    else:
+        scaler = None
+        mixed_dtype = None
+ 
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
+    elif (cfg.optimizer == "RAdam"):
+        optimizer = optim.RAdam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
-        print("ERROR: only Adam optimizer implemented at the moment")
+        print("ERROR: optimizer implemented at the moment")
+    if (cfg.scheduler == "Plateau"):
+        if (comm.rank==0): print("Applying plateau scheduler\n")
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
     if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
@@ -327,7 +360,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         rtime = perf_counter() 
         global_loss, t_data = online_train(comm, model, 
                                            train_tensor_loader, optimizer, 
-                                           iepoch, t_data, client, cfg)
+                                           scaler, mixed_dtype, iepoch, 
+                                           t_data, client, cfg)
         rtime = perf_counter() - rtime
         if (iepoch>1):
             t_data.t_train = t_data.t_train + rtime
@@ -336,7 +370,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         # Call validation function
         if (num_val_tensors>0):
             acc_avg, corr_avg = online_validate(comm, model, val_tensor_loader, 
-                                                iepoch, cfg.mini_batch, client, cfg)
+                                                mixed_dtype, iepoch, client, cfg)
         
         # Check if tolerance on loss is satisfied
         if (global_loss <= cfg.tolerance):
@@ -384,7 +418,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
         # Call testing function
         testData, acc_avg, corr_avg = online_test(comm, model, test_tensor_loader,
-                                 cfg.mini_batch, client, cfg)
+                                                  mixed_dtype, client, cfg)
 
     # Tell simulation to quit
     if (comm.rank==0 and rerun_check!=0):
