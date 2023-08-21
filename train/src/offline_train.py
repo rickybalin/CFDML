@@ -23,7 +23,7 @@ try:
 except:
     pass
 
-from utils import metric_average
+from utils import metric_average, stack_metrics
 from datasets import OfflineDataset
 
 ### Train the model
@@ -117,9 +117,12 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
     # Accumulate accuracy measures
     running_acc = running_acc.item() / num_batches
-    acc_avg = metric_average(comm, running_acc)
+    metric_arr = stack_metrics(None,running_acc)
     running_loss = running_loss.item() / num_batches
-    loss_avg = metric_average(comm, running_loss)
+    metric_arr = stack_metrics(metric_arr,running_loss)
+    metric_arr = metric_average(comm,metric_arr)
+    acc_avg = metric_arr[0]
+    loss_avg = metric_arr[1]
     if comm.rank == 0:
         print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
         sys.stdout.flush()

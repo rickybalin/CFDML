@@ -11,6 +11,7 @@ import math as m
 import vtk
 from vtk.util import numpy_support as VN
 
+
 ### MPI Communicator class
 class MPI_COMM:
     def __init__(self):
@@ -37,6 +38,7 @@ class MPI_COMM:
             print(f"Hello from MPI rank {self.rank}/{self.size}")
             sys.stdout.flush()
 
+
 ### Horovod Communicator class
 class HVD_COMM:
     def __init__(self):
@@ -54,11 +56,21 @@ class HVD_COMM:
             print(f"Hello from HVD rank {self.rank}/{self.size}")
             sys.stdout.flush()
 
+
 ### Compute the average of a quantity across all ranks
 def metric_average(comm, val):
     avg_val = comm.comm.allreduce(val, op=comm.sum)
     avg_val = avg_val / comm.size
     return avg_val
+
+
+### Stack metrics into single array for efficient comm
+def stack_metrics(arr,value):
+    if (arr is not None):
+        arr = np.append(arr,value)
+    else:
+        arr = np.array([value])
+    return arr
 
 
 ### Compute the correlation coefficient between predicted and target outputs

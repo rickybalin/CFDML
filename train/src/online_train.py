@@ -160,9 +160,12 @@ def online_validate(comm, model, val_tensor_loader, mixed_dtype, epoch,
 
     # Accumulate accuracy measures
     running_acc = running_acc.item() / len(val_tensor_loader) / len(val_loader)
-    acc_avg = metric_average(comm, running_acc)
+    metric_arr = stack_metrics(None,running_acc)
     running_loss = running_loss.item() / len(val_tensor_loader) / len(val_loader)
-    loss_avg = metric_average(comm, running_loss)
+    metric_arr = stack_metrics(metric_arr,running_loss)
+    metric_arr = metric_average(comm,metric_arr)
+    acc_avg = metric_arr[0]
+    loss_avg = metric_arr[1]
     if comm.rank == 0:
         print(f"Validation set: | Epoch: {epoch} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
         sys.stdout.flush()
