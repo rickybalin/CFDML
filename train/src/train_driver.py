@@ -17,6 +17,7 @@ from torch.utils.data import Dataset, DataLoader
 # Import required functions
 from online_train import onlineTrainLoop
 from offline_train import offlineTrainLoop
+from offline_train_prof import offlineTrainLoopProf
 import models
 from time_prof import timeStats
 import utils
@@ -134,6 +135,8 @@ def main(cfg: DictConfig):
     # Train model
     if cfg.online.db_launch:
         model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
+    elif (not cfg.online.db_launch and cfg.profile):
+        model, testData = offlineTrainLoopProf(cfg, comm, t_data, model, data)
     else:
         model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
 
