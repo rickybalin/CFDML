@@ -135,7 +135,7 @@ def main(cfg: DictConfig):
     # Train model
     if cfg.online.db_launch:
         model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
-    elif (not cfg.online.db_launch and cfg.profile):
+    elif (not cfg.online.db_launch and cfg.torch_profiler):
         model, testData = offlineTrainLoopProf(cfg, comm, t_data, model, data)
     else:
         model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
@@ -168,10 +168,11 @@ def main(cfg: DictConfig):
 
     
     # Collect timing statistics
-    if (comm.rank==0):
-        print("\nTiming data:")
-        sys.stdout.flush()
-    t_data.printTimeData(cfg, comm)
+    if (cfg.epochs>2):
+        if (comm.rank==0):
+            print("\nTiming data:")
+            sys.stdout.flush()
+        t_data.printTimeData(cfg, comm)
  
 
     # Exit

@@ -34,7 +34,8 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
 
     # Loop over mini-batches
-    for batch_idx, data in enumerate(train_loader):
+    with torch.autograd.profiler.emit_nvtx(enabled=cfg.nsys_profiler):
+        for batch_idx, data in enumerate(train_loader):
             # Offload batch data
             if (cfg.device != 'cpu'):
                data = data.to(cfg.device)
@@ -47,6 +48,10 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
                     loss = model.training_step(data)
                 elif (cfg.distributed=='ddp'):
                     loss = model.module.training_step(data)
+                    #target = data[:, :6]
+                    #features = data[:, 6:]
+                    #output = model(features)
+                    #loss = nn.functional.mse_loss(output, target)
             if (cfg.mixed_precision):
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -93,27 +98,28 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
 
     # Loop over batches, which in this case are the tensors to grab from database
-    with torch.no_grad():
-        for batch_idx, data in enumerate(val_loader):
-            # Offload batch data
-            if (cfg.device != 'cpu'):
-                data = data.to(cfg.device)
+    with torch.autograd.profiler.emit_nvtx(enabled=cfg.nsys_profiler):
+        with torch.no_grad():
+            for batch_idx, data in enumerate(val_loader):
+                # Offload batch data
+                if (cfg.device != 'cpu'):
+                    data = data.to(cfg.device)
 
-            # Perform forward pass
-            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
-                if (cfg.distributed=='horovod'):
-                    acc, loss = model.validation_step(data, return_loss=True)
-                elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.validation_step(data, return_loss=True)
-            running_acc += acc
-            running_loss += loss
+                # Perform forward pass
+                with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                    if (cfg.distributed=='horovod'):
+                        acc, loss = model.validation_step(data, return_loss=True)
+                    elif (cfg.distributed=='ddp'):
+                        acc, loss = model.module.validation_step(data, return_loss=True)
+                running_acc += acc
+                running_loss += loss
                 
-            # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
-                print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
-                        f'[{batch_idx+1}/{num_batches}] | ' + \
-                        f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
-                sys.stdout.flush()
+                # Print data for some ranks only
+                if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
+                    print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
+                            f'[{batch_idx+1}/{num_batches}] | ' + \
+                            f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
+                    sys.stdout.flush()
 
     # Accumulate accuracy measures
     running_acc = running_acc.item() / num_batches

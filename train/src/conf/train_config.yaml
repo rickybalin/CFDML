@@ -7,7 +7,8 @@ distributed: "ddp" # horovod, ddp - distributed training library
 model: "sgs" # sgs, qcnn-3d - model ID
 data_path: "synthetic" # string, synthetic - path to training data to load
 repeatability: False # True, False - make training deterministic
-profile: False # True, False - profile the training loop
+torch_profiler: False # True, False - profile the code with the torch profiler
+nsys_profiler: False # True, False - profile the code with Nvidia nsys
 
 # Training hyperparameters config
 epochs: 10 # integer - max number of epochs for training
