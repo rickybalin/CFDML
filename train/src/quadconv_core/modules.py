@@ -12,11 +12,13 @@ Input:
 '''
 
 from torch import nn
-
-from torch_quadconv import QuadConv
-
 from .utils import package_args, swap
 from .quadconv_blocks import PoolBlock
+try:
+    from torch_quadconv import QuadConv
+except:
+    pass
+
 
 '''
 Traceable Unflatten layer.

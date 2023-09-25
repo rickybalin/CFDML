@@ -8,8 +8,11 @@ import sys
 import numpy as np
 from numpy import linalg as la
 import math as m
-import vtk
-from vtk.util import numpy_support as VN
+try: 
+    import vtk
+    from vtk.util import numpy_support as VN
+except:
+    pass
 
 ### MPI Communicator class
 class MPI_COMM:

@@ -14,10 +14,11 @@ Input:
 '''
 
 import numpy as np
-
 import torch.nn as nn
-
-from torch_quadconv import QuadConv
+try:
+    from torch_quadconv import QuadConv
+except:
+    pass
 
 ################################################################################
 

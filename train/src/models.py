@@ -8,7 +8,10 @@ import numpy as np
 from utils import comp_corrCoeff
 from quadconv_core.utils import load_model_config
 from quadconv_core.model import Model
-from torch_quadconv import MeshHandler
+try:
+    from torch_quadconv import MeshHandler
+except:
+    pass
 
 
 ### Anisotropic SGS model for LES developed by Aviral Prakash and John A. Evans at UCB
