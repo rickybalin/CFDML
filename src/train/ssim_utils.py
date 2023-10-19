@@ -4,6 +4,7 @@
 #####
 
 import sys
+from os import environ
 from os.path import exists
 from time import perf_counter
 
@@ -30,11 +31,11 @@ class SmartRedisClient:
 
         # Read the address of the co-located database first
         if (cfg.online.db_launch=='colocated'):
-            prefix = f'{cfg.online.simprocs}-procs_case/'
-            address = self.read_SSDB(prefix, comm)
+            #prefix = f'{cfg.online.simprocs}-procs_case/'
+            #address = self.read_SSDB(prefix, comm)
+            address = environ['SSDB']
         else:
             address = None
-        #address = os.environ['SSDB']
 
         # Initialize Redis clients on each rank #####
         if (comm.rank == 0):
@@ -97,7 +98,7 @@ class SmartRedisClient:
                 t_data.t_meta = t_data.t_meta + rtime
                 t_data.i_meta = t_data.i_meta + 1
                 break
-
+        print(dataSizeInfo)
         self.npts = dataSizeInfo[0]
         self.ndTot = dataSizeInfo[1]
         self.ndIn = dataSizeInfo[2]
@@ -105,21 +106,19 @@ class SmartRedisClient:
         self.num_tot_tensors = dataSizeInfo[3]
         self.num_db_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
+        
+        max_batch_size = int(self.num_db_tensors/cfg.ppn)
+        self.tensor_batch = cfg.online.batch
+        if (cfg.online.batch==0 or self.tensor_batch>max_batch_size): 
+            self.tensor_batch =  max_batch_size
 
         if (comm.rank == 0):
             print(f"Number of samples per Simulation tensor: {self.npts}")
             print(f"Number of tensors in local DB: {self.num_db_tensors}")
             print(f"Number of total tensors in all DB: {self.num_tot_tensors}")
-            sys.stdout.flush()
-
-        max_batch_size = int(self.num_db_tensors/cfg.ppn)
-        self.tensor_batch = cfg.online.batch
-        if (cfg.online.batch==0 or self.tensor_batch>max_batch_size): 
-            self.tensor_batch =  max_batch_size
-        if (comm.rank == 0):
             print(f"Number of Simulation tensors per batch: {self.tensor_batch}")
             sys.stdout.flush()
-    
+
     # Read the flag determining if data is overwritten in DB
     def read_overwrite(self, comm, t_data):
         while True:

@@ -37,7 +37,7 @@ inference:
 # Simulation config
 sim:
     executable: "" # string - path to simulation executable
-    device: "cpu" # cpu, cuda - device for simulation
+    device: "" # cpu, cuda - device for simulation
     arguments: "" # string - command line arguments to simulation
     affinity: "" # string - GPU affinity script for simulation
 

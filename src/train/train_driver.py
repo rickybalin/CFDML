@@ -88,7 +88,7 @@ def main(cfg: DictConfig):
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
         client.read_overwrite(comm, t_data)
-        client.read_filters(cfg, t_data)
+        #client.read_filters(cfg, t_data)
         mesh_nodes = client.read_mesh(cfg, comm, t_data)
 
     # Load data from file if not launching database
