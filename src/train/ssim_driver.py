@@ -65,10 +65,11 @@ def launch_coDB(cfg, nodelist, nNodes):
         }
     if (cfg.database.backend == "keydb"):
         kwargs['server_threads'] = 2 # keydb only
+    db_bind = None if cfg.run_args.db_cpu_bind=='None' else cfg.run_args.db_cpu_bind
     if (cfg.database.network_interface=='uds'):
         colo_model.colocate_db_uds(
                 db_cpus=cfg.run_args.dbprocs_pn,
-                custom_pinning=None,
+                custom_pinning=db_bind,
                 debug=False,
                 **kwargs
                 )
@@ -77,7 +78,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                 port=PORT,
                 ifname=cfg.database.network_interface,
                 db_cpus=cfg.run_args.dbprocs_pn,
-                custom_pinning=None,
+                custom_pinning=db_bind,
                 debug=False,
                 **kwargs
                 )
