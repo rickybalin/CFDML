@@ -296,7 +296,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
     # Create DataLoader
     if (cfg.online.db_launch=="colocated"):
-        replicas = cfg.ppn
+        replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
         replicas = comm.size

@@ -98,7 +98,6 @@ class SmartRedisClient:
                 t_data.t_meta = t_data.t_meta + rtime
                 t_data.i_meta = t_data.i_meta + 1
                 break
-        print(dataSizeInfo)
         self.npts = dataSizeInfo[0]
         self.ndTot = dataSizeInfo[1]
         self.ndIn = dataSizeInfo[2]
@@ -107,16 +106,18 @@ class SmartRedisClient:
         self.num_db_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
         
-        max_batch_size = int(self.num_db_tensors/cfg.ppn)
+        max_batch_size = int(self.num_db_tensors/(cfg.ppn*cfg.ppd))
         self.tensor_batch = cfg.online.batch
         if (cfg.online.batch==0 or self.tensor_batch>max_batch_size): 
-            self.tensor_batch =  max_batch_size
+            self.tensor_batch =  max(1,max_batch_size)
 
         if (comm.rank == 0):
-            print(f"Number of samples per Simulation tensor: {self.npts}")
-            print(f"Number of tensors in local DB: {self.num_db_tensors}")
-            print(f"Number of total tensors in all DB: {self.num_tot_tensors}")
-            print(f"Number of Simulation tensors per batch: {self.tensor_batch}")
+            print(f"Samples per simulation tensor: {self.npts}")
+            print(f"Model input features: {self.ndIn}")
+            print(f"Model output targets: {self.ndOut}")
+            print(f"Total tensors in all DB: {self.num_tot_tensors}")
+            print(f"Tensors in local DB: {self.num_db_tensors}")
+            print(f"Simulation tensors per batch: {self.tensor_batch}")
             sys.stdout.flush()
 
     # Read the flag determining if data is overwritten in DB
@@ -132,9 +133,9 @@ class SmartRedisClient:
         self.dataOverWr = tmp[0]
         if (comm.rank==0):
             if (self.dataOverWr>0.5): 
-                print("Training data is overwritten in DB \n")
+                print("\nTraining data is overwritten in DB \n")
             else:
-                print("Training data is NOT overwritten in DB \n")
+                print("Training data is accumulated in DB \n")
             sys.stdout.flush()
 
     # Read the flag determining how many filterwidths to train on

@@ -116,7 +116,7 @@ def main(cfg: DictConfig):
     torch.set_num_threads(1)
     if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
-            cuda_id = comm.rankl//cfg.ppd
+            cuda_id = comm.rankl//cfg.ppd if torch.cuda.device_count()>1 else 0
             torch.cuda.set_device(cuda_id)
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
