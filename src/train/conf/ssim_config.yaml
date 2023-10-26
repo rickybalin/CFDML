@@ -31,7 +31,7 @@ run_args:
 # Model Inference config
 inference:
     model_path: "" # string - path to model to load for inference
-    backend: "TORCH" # TORCH - ML backend to use for inference
+    backend: "TORCH" # TORCH, TF, ONNX - ML backend to use for inference
     device: "GPU" # CPU,GPU - device on which to run inference
     batch: 0 # integer - how many inference requests to batch before running model
     devices_per_node: 1 # integer - number of GPU available for inference

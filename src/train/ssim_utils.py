@@ -154,7 +154,7 @@ class SmartRedisClient:
     # Read the mesh nodes
     def read_mesh(self, cfg, comm, t_data):
         mesh_nodes = None
-        if ("qcnn" in cfg.model):
+        if (cfg.model=='quadconv'):
             rtime = perf_counter()
             mesh_nodes = self.client.get_tensor('mesh').astype('float32')
             rtime = perf_counter() - rtime

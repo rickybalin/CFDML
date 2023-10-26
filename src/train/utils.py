@@ -87,9 +87,9 @@ def load_data(cfg, rng):
         if (cfg.model == 'sgs'):
             data = np.float32(rng.normal(size=(samples,12)))
             mesh = None
-        elif ("qcnn" in cfg.model):
+        elif (cfg.model=='quadconv'):
             N = 32
-            data = np.float32(rng.normal(size=(samples,cfg.qcnn.channels,N**3)))
+            data = np.float32(rng.normal(size=(samples,cfg.quadconv.channels,N**3)))
             mesh = np.zeros((N**3,3), dtype=np.float32)
             for i in range(N):
                 x = 0. + 1. * (i - 1) / (N - 1)
@@ -130,12 +130,12 @@ def load_data(cfg, rng):
                         max_val = np.amax(data[:,i])
                         fh.write(f"{min_val:>8e} {max_val:>8e}\n")
                         data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
-        elif ("qcnn" in cfg.model):
-            extension = cfg.qcnn.mesh_file.split(".")[-1]
+        elif (cfg.model=='quadconv'):
+            extension = cfg.quadconv.mesh_file.split(".")[-1]
             if "npy" in extension:
-                mesh = np.float32(np.load(cfg.qcnn.mesh_file))
+                mesh = np.float32(np.load(cfg.quadconv.mesh_file))
             with open(cfg.name+"_scaling.dat", "w") as fh:
-                for i in range(cfg.qcnn.channels):
+                for i in range(cfg.quadconv.channels):
                     min_val = np.amin(data[:,i,:])
                     max_val = np.amax(data[:,i,:])
                     fh.write(f"{min_val:>8e} {max_val:>8e}\n")

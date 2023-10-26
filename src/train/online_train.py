@@ -44,14 +44,15 @@ def online_train(comm, model, train_tensor_loader, optimizer, scaler, mixed_dtyp
         if (cfg.model=='sgs'):
             concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-        elif ('qcnn' in cfg.model):
+        elif (cfg.model=='quadconv'):
             concat_tensor = torch.stack([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
         rtime = perf_counter() - rtime
-        t_data.t_getBatch = t_data.t_getBatch + rtime
-        t_data.i_getBatch = t_data.i_getBatch + 1
-        fact = float(1.0/t_data.i_getBatch)
-        t_data.t_AveGetBatch = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch
+        if (epoch>2):
+            t_data.t_getBatch = t_data.t_getBatch + rtime
+            t_data.i_getBatch = t_data.i_getBatch + 1
+            fact = float(1.0/t_data.i_getBatch)
+            t_data.t_AveGetBatch = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch
 
         # Create mini-batch dataset and loader
         mb_dataset = MiniBatchDataset(concat_tensor)
@@ -79,16 +80,17 @@ def online_train(comm, model, train_tensor_loader, optimizer, scaler, mixed_dtyp
                 loss.backward()
                 optimizer.step()
             rtime = perf_counter() - rtime
-            t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
-            t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
-            fact = float(1.0/t_data.i_compMiniBatch)
-            t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
+            if (epoch>2):
+                t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
+                t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
+                fact = float(1.0/t_data.i_compMiniBatch)
+                t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
 
             # Update running loss
             running_loss += loss
 
             # Print data for some ranks only
-            if (comm.rank==0 and (batch_idx)%50==0):
+            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
                 print(f'{comm.rank}: Train Epoch: {epoch} | ' + \
                       f'[{tensor_idx+1}/{len(train_tensor_loader)}] | ' + \
                       f'[{batch_idx+1}/{len(train_loader)}] | ' + \
@@ -127,7 +129,7 @@ def online_validate(comm, model, val_tensor_loader, mixed_dtype, epoch,
             if (cfg.model=='sgs'):
                 concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-            elif ('qcnn' in cfg.model):
+            elif (cfg.model=='quadconv'):
                 concat_tensor = torch.stack([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
 
@@ -191,7 +193,7 @@ def online_test(comm, model, test_tensor_loader, mixed_dtype,
             if (cfg.model=='sgs'):
                 concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
-            elif ('qcnn' in cfg.model):
+            elif (cfg.model=='quadconv'):
                 concat_tensor = torch.stack([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
 
@@ -312,9 +314,23 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
-        print("\nStarting training loop ... \n")
+        print("\nWaiting for training data to be populated in DB ...")
         sys.stdout.flush()
     while True:
+        if (client.client.poll_tensor("step",0,1)):
+            rtime = perf_counter()
+            tmp = client.client.get_tensor('step')
+            rtime = perf_counter() - rtime
+            t_data.t_meta = t_data.t_meta + rtime
+            t_data.i_meta = t_data.i_meta + 1 
+            break
+    if (comm.rank == 0):
+        print("Found data, starting training loop\n")
+        sys.stdout.flush()
+
+    # Start training loop
+    while True:
+        tic_l = perf_counter()
         # Check to see if simulation says time to quit, if so break loop
         if (client.client.poll_tensor("check-run",0,1)):
             rtime = perf_counter()
@@ -331,14 +347,11 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 break
 
         # check to see if the time step number has been sent to database, if not cycle
-        if (client.client.poll_tensor("step",0,1)):
-            rtime = perf_counter()
-            tmp = client.client.get_tensor('step')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1
-        else:
-            continue
+        rtime = perf_counter()
+        tmp = client.client.get_tensor('step')
+        rtime = perf_counter() - rtime
+        t_data.t_meta = t_data.t_meta + rtime
+        t_data.i_meta = t_data.i_meta + 1
 
         # new data is available in database
         if (istep != tmp[0]): 
@@ -357,20 +370,23 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         
         # Call training function
         train_sampler.set_epoch(iepoch-1)
-        rtime = perf_counter() 
+        tic_t = perf_counter() 
         global_loss, t_data = online_train(comm, model, 
                                            train_tensor_loader, optimizer, 
                                            scaler, mixed_dtype, iepoch, 
                                            t_data, client, cfg)
-        rtime = perf_counter() - rtime
-        if (iepoch>1):
-            t_data.t_train = t_data.t_train + rtime
-            t_data.i_train = t_data.i_train + 1
+        toc_t = perf_counter()
 
         # Call validation function
         if (num_val_tensors>0):
             acc_avg, corr_avg = online_validate(comm, model, val_tensor_loader, 
                                                 mixed_dtype, iepoch, client, cfg)
+        toc_l = perf_counter()
+        if (iepoch>2):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
+            t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.i_train = t_data.i_train + 1
+
         
         # Check if tolerance on loss is satisfied
         if (global_loss <= cfg.tolerance):
