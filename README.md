@@ -32,7 +32,7 @@ The CFD codes [PHASTA](https://github.com/PHASTA/phasta) and [libCEED](https://g
 
 ## Offline Training
 To perform offline training with CFDML, run the training driver script directly with
-````
+```
 python src/train/train_driver.py
 ```
 For data-parallel distributed training with multiple processes, use a parallel job launcher, for example
@@ -53,7 +53,7 @@ To change the run parameters:
 
 ## Online Training and Inference
 To perform online training or inference, run the SmartSim driver script directly with
-````
+```
 python src/train/ssim_driver.py
 ```
 The workflow will be set up according to the default configuration parameters specified in
