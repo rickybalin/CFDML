@@ -20,13 +20,13 @@ This strategy is different from the traditional offline training approach, where
 During online inference, the database allows the simulation to load one or more ML models and its input data onto the database, therefore and with the SmartRedis API the model can be evaluated on the data on the CPU or GPU to obtain the desired predictions.
 
 CFDML provides the workflow driver which launches the components involved for online training and inference (i.e., the simulation, database, and/or distributed training), as well as the standard offline training. It also controls the deployment approach used for the workflow, which can be clustered or colocated. 
-In the former, all components are deployed on distinct set of nodes and the data being transferred across components is communicated through the machine?s interconnect.
+In the former, all components are deployed on distinct set of nodes and the data being transferred across components is communicated through the machine’s interconnect.
 In the latter, the components share resources on the same nodes, thus keeping all data transfer within each node. This approach was demonstrated to scale very efficiently to hundreds of nodes on the Polaris machine at ALCF in [Balin et al., 2023](https://arxiv.org/abs/2306.12900).
 
 Note that CFDML takes the path to the simulation executable as an input to the online workflow driver script, but it does not offer a CFD code as default.
 In fact, CFDML is independent of the CFD package used.
 However, for CFDML to be used for online training and inference, a particular code must be integrated with the SmartRedis library such that a connection to the database can be established. 
-Moreover, currently the CFD solver is responsible for computing the model?s input and outputs from the raw solution variables.
+Moreover, currently the CFD solver is responsible for computing the model’s input and outputs from the raw solution variables.
 The CFD codes [PHASTA](https://github.com/PHASTA/phasta) and [libCEED](https://github.com/CEED/libCEED) have already been augmented with the SmartRedis API and linked to CFDML. 
  
 
@@ -37,7 +37,7 @@ python src/train/train_driver.py
 ```
 For data-parallel distributed training with multiple processes, use a parallel job launcher, for example
 ```
-mpiexec -n <num_procs> ?ppn <num_procs_per_node> python src/train/train_driver.py
+mpiexec -n <num_procs> —ppn <num_procs_per_node> python src/train/train_driver.py
 ```
 
 The training run will be set up according to the default configuration parameters specified in
@@ -136,7 +136,6 @@ General information on how to run SmartSim and SmartRedis on other systems is fo
 
 
 ## Publications
-[Balin et al., ?In Situ Framework for Coupling Simulation and Machine Learning with Application to CFD?, arXiv:2306.12900, 2023](https://arxiv.org/abs/2306.12900)
-
+[Balin et al., “In Situ Framework for Coupling Simulation and Machine Learning with Application to CFD”, arXiv:2306.12900, 2023](https://arxiv.org/abs/2306.12900)
 
 
