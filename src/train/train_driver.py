@@ -101,9 +101,9 @@ def main(cfg: DictConfig):
     # Instantiate the NN model 
     if (cfg.model=="sgs"):
         model = models.anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
-    elif ("qcnn" in cfg.model):
+    elif (cfg.model=="quadconv"):
         mesh_nodes = torch.from_numpy(mesh_nodes)
-        model = models.qcnn(comm.rank, mesh_nodes, cfg.qcnn.qcnn_config, cfg.qcnn.channels)
+        model = models.QuadConv(comm.rank, mesh_nodes, cfg.quadconv.quadconv_config, cfg.quadconv.channels)
     n_params = utils.count_weights(model)
     if (comm.rank == 0):
         print(f"\nLoaded model with {n_params} trainable parameters \n")
@@ -116,7 +116,7 @@ def main(cfg: DictConfig):
     torch.set_num_threads(1)
     if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
-            cuda_id = comm.rankl//cfg.ppd
+            cuda_id = comm.rankl//cfg.ppd if torch.cuda.device_count()>1 else 0
             torch.cuda.set_device(cuda_id)
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
             torch.xpu.set_device(xpu_id)
     if (cfg.device != 'cpu'):
         model.to(device)
-        if ("qcnn" in cfg.model):
+        if (cfg.model=='quadconv'):
             mesh_nodes = mesh_nodes.to(device)
 
     # Initializa DDP model
@@ -147,9 +147,9 @@ def main(cfg: DictConfig):
         if (cfg.model=="sgs"):
             module = torch.jit.trace(model, testData)
             torch.jit.save(module, f"{cfg.name}_jit.pt")
-        elif ("qcnn" in cfg.model):
-            encoder = models.qcnnEncoder(model.encoder, model.mesh)
-            decoder = models.qcnnDecoder(model.decoder, model.mesh, model.output_activation)
+        elif (cfg.model=="quadconv"):
+            encoder = models.quadconvEncoder(model.encoder, model.mesh)
+            decoder = models.quadconvDecoder(model.decoder, model.mesh, model.output_activation)
             dummy_latent = encoder(testData).detach()
             predicted = decoder(dummy_latent).detach()
             module_encode = torch.jit.trace(encoder, testData)

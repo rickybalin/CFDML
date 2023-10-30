@@ -102,27 +102,28 @@ class timeStats:
         if cfg.online.db_launch:
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
             if comm.rank==0:
-                print(f"tSSIMInit : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
-            avg, std = self.computeStats_i(comm, self.i_init)
-            if comm.rank==0:
-                print(f"iSSIMInit : min [.,.], max [.,.], avg [{avg},.], std [{std},.]")
+                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
+                print(f"SmartRedis client initialization [s] " + stats_string)
 
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_meta)
             if comm.rank==0:
-                print(f"tSSIMMeta : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
+                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
+                print(f"SmartRedis metadata transfer [s] " + stats_string)
             avg, std = self.computeStats_i(comm, self.i_meta)
             if comm.rank==0:
-                print(f"iSSIMMeta : min [.,.], max [.,.], avg [{avg},.], std [{std},.]")
+                print(f"SmartRedis calls for metadata transfer : {int(avg)}")
 
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_getBatch)
             if comm.rank==0:
-                print(f"tSSIMgetBatch : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
+                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
+                print(f"SmartRedis batch data transfer [s] " + stats_string)
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_AveGetBatch)
             if comm.rank==0:
-                print(f"tSSIMaveGetBatch : min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]")
+                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
+                print(f"SmartRedis average batch data transfer [s] " + stats_string)
             avg, std = self.computeStats_i(comm, self.i_getBatch)
             if comm.rank==0:
-                print(f"iSSIMgetBatch : min [.,.], max [.,.], avg [{avg},.], std [{std},.]")
+                print(f"SmartRedis calls for batch data transfer : {int(avg)}")
 
         if comm.rank==0: print("")
     

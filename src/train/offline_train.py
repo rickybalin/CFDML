@@ -232,10 +232,6 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
                                             optimizer, scaler, mixed_dtype,
                                             ep, t_data, cfg)
         toc_t = perf_counter()
-        if (ep>1):
-            t_data.t_train = t_data.t_train + (toc_t - tic_t)
-            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
-            t_data.i_train = t_data.i_train + 1
 
         # Validate
         if (nVal==0):
@@ -256,6 +252,13 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         if (cfg.scheduler == "Plateau"):
             scheduler.step(global_val_loss)
 
+        toc_l = perf_counter()
+        if (ep>1):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
+            t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
+            t_data.i_train = t_data.i_train + 1
+        
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.tolerance):
             if (comm.rank == 0):
@@ -267,9 +270,5 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             break
-
-        toc_l = perf_counter()
-        if (ep>1):
-            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
 
     return model, valData

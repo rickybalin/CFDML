@@ -86,7 +86,7 @@ class anisoSGS(nn.Module):
 
 
 ### Quad-Conv (QCNN) AE model developed by Cooper Simpson, Alireza Doostan, Stephen Becker at UCB
-def qcnn(rank, mesh_nodes, config_file, num_channels):
+def QuadConv(rank, mesh_nodes, config_file, num_channels):
     mesh = MeshHandler(mesh_nodes)
 
     #load and update model config
@@ -107,7 +107,7 @@ def qcnn(rank, mesh_nodes, config_file, num_channels):
     
 
 # Classes used for tracing the encoder and decoder separately
-class qcnnEncoder(torch.nn.Module):
+class quadconvEncoder(torch.nn.Module):
     def __init__(self, encoder, mesh):
         """Usage: trace = torch.jit.trace(Encoder(model.encoder, model.mesh), input_data)
         """
@@ -120,7 +120,7 @@ class qcnnEncoder(torch.nn.Module):
 
         return self.encoder(self.mesh, X)
 
-class qcnnDecoder(torch.nn.Module):
+class quadconvDecoder(torch.nn.Module):
     def __init__(self, decoder, mesh, output_activation):
         super().__init__()
         self.decoder = decoder
