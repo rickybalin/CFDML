@@ -117,7 +117,13 @@ def main(cfg: DictConfig):
     if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
             cuda_id = comm.rankl//cfg.ppd if torch.cuda.device_count()>1 else 0
+            assert cuda_id>=0 and cuda_id<torch.cuda.device_count(), \
+                   f"Assert failed: cuda_id={cuda_id} and {torch.cuda.device_count()} available devices"
+            sys.stdout.flush()
             torch.cuda.set_device(cuda_id)
+        else:
+            print(f"[{comm.rank}]: no cuda devices available, cuda.device_count={torch.cuda.device_count()}")
+            sys.stdout.flush()
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
             xpu_id = comm.rankl//cfg.ppd

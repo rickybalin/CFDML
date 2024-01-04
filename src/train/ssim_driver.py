@@ -42,9 +42,8 @@ def launch_coDB(cfg, nodelist, nNodes):
     elif (cfg.database.launcher=='pbs'):
         sim_settings = PalsMpiexecSettings(
                            client_exe,
-                           exe_args=None,
                            run_args=None,
-                           env_vars=None)
+                           env_vars={'MPICH_OFI_CXI_PID_BASE':str(0)})
         sim_settings.set_tasks(cfg.run_args.simprocs)
         sim_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
         sim_settings.set_hostlist(hosts)
@@ -109,17 +108,18 @@ def launch_coDB(cfg, nodelist, nNodes):
                         + f' online.db_launch={cfg.database.deployment}' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
                         + f' online.db_nodes={cfg.run_args.db_nodes}'
+        SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings('python',
                                       exe_args=ml_exe,
                                       run_command='mpirun',
                                       run_args={"-n" : cfg.run_args.mlprocs},
-                                      env_vars=colo_model.run_settings.env_vars)
+                                      env_vars={'SSDB':SSDB})
         elif (cfg.database.launcher=='pbs'):
             ml_settings = PalsMpiexecSettings('python', 
                                               exe_args=ml_exe,
                                               run_args=None,
-                                              env_vars=colo_model.run_settings.env_vars)
+                                              env_vars={'SSDB':SSDB, 'MPICH_OFI_CXI_PID_BASE':str(1)})
             ml_settings.set_tasks(cfg.run_args.mlprocs)
             ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
             ml_settings.set_hostlist(hosts)
