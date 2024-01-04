@@ -1,4 +1,4 @@
-# In Situ Machine Learning for Computational Fluid Dynamics
+# CFDML: In Situ Machine Learning for Computational Fluid Dynamics
 
 CFDML is a Python based tool designed to facilitate the application of machine learning (ML) to the fields of computational fluid dynamics (CFD) and turbulence modeling. 
 It provides a suite of pre-trained ML models capable of performing various taks together with a framework to facilitate the integration of these models within CFD codes to enable live inferencing and deployment in production simulations.
