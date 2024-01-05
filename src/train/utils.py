@@ -83,7 +83,10 @@ def count_weights(model):
 ### Load training data from file or create synthetic data
 def load_data(cfg, rng):
     if (cfg.data_path == "synthetic"):
-        samples = 20 * cfg.mini_batch
+        if (cfg.num_samples_per_rank==111):
+            samples = 20 * cfg.mini_batch
+        else:
+            samples = cfg.num_samples_per_rank
         if (cfg.model == 'sgs'):
             data = np.float32(rng.normal(size=(samples,12)))
             mesh = None

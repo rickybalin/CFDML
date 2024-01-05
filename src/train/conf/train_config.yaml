@@ -6,6 +6,7 @@ device: "cpu" # cpu, cuda, xpu - device to train on
 distributed: "ddp" # horovod, ddp - distributed training library
 model: "sgs" # sgs, quadconv - model ID
 data_path: "synthetic" # string, synthetic - path to training data to load
+num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
 repeatability: False # True, False - make training deterministic
 
 # Training hyperparameters config

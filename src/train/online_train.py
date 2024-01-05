@@ -438,7 +438,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
     # Tell simulation to quit
     if (comm.rankl==0 and rerun_check!=0):
-        print("Telling simulation to quit ... \n")
+        if (comm.rank==0): print("Telling simulation to quit ... \n")
         arrMLrun = np.zeros(2)
         client.client.put_tensor("check-run",arrMLrun)
  
