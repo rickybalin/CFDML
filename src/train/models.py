@@ -23,10 +23,6 @@ class anisoSGS(nn.Module):
         self.ndOut = outputDim
         self.nNeurons = numNeurons
         self.nLayers = numLayers
-        #self.net = nn.Sequential(
-        #    nn.Linear(self.ndIn, self.nNeurons),
-        #    nn.LeakyReLU(0.3),
-        #    nn.Linear(self.nNeurons, self.ndOut))
         self.net = nn.ModuleList()
         self.net.append(nn.Linear(self.ndIn, self.nNeurons)) # input layer
         self.net.append(nn.LeakyReLU(0.3))

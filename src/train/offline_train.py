@@ -236,7 +236,10 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         # Validate
         if (nVal==0):
             global_val_loss = global_loss
-            valData = torch.from_numpy(data[cfg.mini_batch])
+            if (cfg.model=='sgs'):
+                valData = data[cfg.mini_batch,6:].to(cfg.device)
+            else:
+                valData = data.to(cfg.device)
         else:
             tic_v = perf_counter()
             global_acc, global_val_loss, valData = offline_validate(comm, model, 
