@@ -22,6 +22,17 @@ int main(int argc, const char* argv[]) {
       strcpy(device_str, "cpu");
       device = torch::kCPU;
     }
+  } else if (strcmp(device_str,"xpu")==0) {
+    device = torch::kXPU;
+    /*
+    if (torch::xpu::is_available()) {
+      device = torch::kXPU;
+    } else {
+      std::cout << "XPU device not found, setting device to CPU \n\n";
+      strcpy(device_str, "cpu");
+      device = torch::kCPU;
+    }
+    */
   } else {
     std::cout << "Input device not found, setting device to CPU \n\n";
     strcpy(device_str, "cpu");
