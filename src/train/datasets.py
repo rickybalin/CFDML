@@ -124,8 +124,7 @@ class OfflineDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self,idx):
-        sample = self.data[idx]
-        return sample
+        return self.data[idx]
 
 
 
