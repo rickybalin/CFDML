@@ -8,6 +8,11 @@
 #include "sycl/sycl.hpp"
 #include <unistd.h>
 
+const int N_SAMPLES = 2048;
+const int N_INPUTS = 6;
+const int N_OUTPUTS = 6;
+const int INPUTS_SIZE = N_SAMPLES*N_OUTPUTS;
+
 int main(int argc, const char* argv[]) 
 {
   if (argc < 3) {
@@ -62,36 +67,25 @@ int main(int argc, const char* argv[])
   std::cout << "Model offloaded to " << device_str << " device \n\n";
 
   // Create the input data on the host
-  //float *inputs = new float[2048*6]();
-  std::vector<float> inputs(3276800*6);
+  std::vector<float> inputs(INPUTS_SIZE);
   srand(12345);
-  for (int i=0; i<3276800*6; i++) {
+  for (int i=0; i<INPUTS_SIZE; i++) {
     inputs[i] = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
   } 
   std::cout << "Generated input data on the host \n\n";
-  sleep(10);
 
-  // Move input data to the device
-  /*auto selector;
+  // Move input data to the device with SYCL
+  auto selector = sycl::cpu_selector_v;
   if (strcmp(device_str,"cuda")==0 or strcmp(device_str,"xpu")==0) {
     selector = sycl::gpu_selector_v;
-  } else {
-    selector = sycl::cpu_selector_v;
-  }*/
-  sycl::queue Q(sycl::gpu_selector_v);
+  }
+  sycl::queue Q(selector);
   std::cout << "SYCL running on "
             << Q.get_device().get_info<sycl::info::device::name>()
-            << "\n";
-  sleep(10);
-  sycl::buffer<float, 1> inputs_buf((sycl::range<1>(3276800*6)));
-  std::cout << "created buffer\n";
-  sleep(10);
-  Q.submit([&](sycl::handler &cgh) {
-    sycl::accessor inputs_acc{inputs_buf, cgh, sycl::read_write};
-    cgh.copy(inputs.data(), inputs_acc);
-  });
-  std::cout << "after Q.submit\n";
-  sleep(10);
+            << "\n\n";
+  float *d_inputs = sycl::malloc_device<float>(INPUTS_SIZE, Q); 
+  Q.memcpy((void *) d_inputs, (void *) inputs.data(), INPUTS_SIZE*sizeof(float)); 
+  Q.wait();
 
   // Convert input array to Torch tensor
   // NOTE: the pointer to the input data must reside on same device as
@@ -99,8 +93,7 @@ int main(int argc, const char* argv[])
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
-  torch::Tensor input_tensor = torch::from_blob(inputs.data(), {3276800,6}, options);
-  //torch::Tensor input_tensor = torch::from_blob((void *) inputs_acc, {3276800,6}, options);
+  torch::Tensor input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options);
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
   std::cout << "Converted input data to Torch tesor on " << device_str << " device \n\n";
@@ -110,6 +103,8 @@ int main(int argc, const char* argv[])
   torch::Tensor output;
   std::vector<std::chrono::milliseconds::rep> times;
   for (int i=0; i<niter; i++) {
+    sleep(0.1); // sleep a little emulating simulation work
+
     auto tic = std::chrono::high_resolution_clock::now();
     output = model.forward({input_tensor}).toTensor();
     auto toc = std::chrono::high_resolution_clock::now();

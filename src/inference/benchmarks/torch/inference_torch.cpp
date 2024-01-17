@@ -4,6 +4,12 @@
 #include <chrono>
 #include <vector>
 #include <numeric>
+#include <unistd.h>
+
+const int N_SAMPLES = 2048;
+const int N_INPUTS = 6;
+const int N_OUTPUTS = 6;
+const int INPUTS_SIZE = N_SAMPLES*N_OUTPUTS;
 
 int main(int argc, const char* argv[]) 
 {
@@ -62,7 +68,7 @@ int main(int argc, const char* argv[])
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
-  torch::Tensor input_tensor = torch::rand({2048,6}, options);
+  torch::Tensor input_tensor = torch::rand({N_SAMPLES,N_INPUTS}, options);
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
   std::cout << "Created the input tesor on " << device_str << " device \n\n";
@@ -72,6 +78,8 @@ int main(int argc, const char* argv[])
   torch::Tensor output;
   std::vector<std::chrono::milliseconds::rep> times;
   for (int i=0; i<niter; i++) {
+    sleep(0.1); // sleep a little emulating simulation work
+
     auto tic = std::chrono::high_resolution_clock::now();
     output = model.forward({input_tensor}).toTensor();
     auto toc = std::chrono::high_resolution_clock::now();
