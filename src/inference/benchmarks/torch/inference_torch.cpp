@@ -78,7 +78,7 @@ int main(int argc, const char* argv[])
   torch::Tensor output;
   std::vector<std::chrono::milliseconds::rep> times;
   for (int i=0; i<niter; i++) {
-    sleep(0.1); // sleep a little emulating simulation work
+    usleep(100000); // sleep a little emulating simulation work
 
     auto tic = std::chrono::high_resolution_clock::now();
     output = model.forward({input_tensor}).toTensor();

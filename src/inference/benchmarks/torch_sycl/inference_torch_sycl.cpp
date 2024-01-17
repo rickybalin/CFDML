@@ -1,5 +1,6 @@
 #include <torch/torch.h>
 #include <torch/script.h>
+#include <ipex.h>
 #include <iostream>
 #include <cstdlib>
 #include <chrono>
@@ -94,6 +95,7 @@ int main(int argc, const char* argv[])
                     .dtype(torch::kFloat32)
                     .device(device);
   torch::Tensor input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options);
+  //torch::Tensor input_tensor = xpu::dpcpp::fromUSM(d_inputs, at::ScalarType::Float, {N_SAMPLES,N_INPUTS}, c10::nullopt, -1).to(device);
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
   std::cout << "Converted input data to Torch tesor on " << device_str << " device \n\n";
@@ -103,7 +105,7 @@ int main(int argc, const char* argv[])
   torch::Tensor output;
   std::vector<std::chrono::milliseconds::rep> times;
   for (int i=0; i<niter; i++) {
-    sleep(0.1); // sleep a little emulating simulation work
+    usleep(100000); // sleep a little emulating simulation work
 
     auto tic = std::chrono::high_resolution_clock::now();
     output = model.forward({input_tensor}).toTensor();

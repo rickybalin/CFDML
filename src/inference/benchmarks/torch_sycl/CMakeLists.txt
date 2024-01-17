@@ -9,6 +9,7 @@ option(INTEL_EXTENSION_FOR_PYTORCH_PATH "Link Intel Extension for Torch" OFF)
 if(INTEL_EXTENSION_FOR_PYTORCH_PATH)
 find_library(IPEX_LIB intel-ext-pt-gpu PATHS ${INTEL_EXTENSION_FOR_PYTORCH_PATH}/lib NO_DEFAULT_PATH REQUIRED)
 set(TORCH_LIBS ${TORCH_LIBS} ${IPEX_LIB})
+include_directories(SYSTEM ${INTEL_EXTENSION_FOR_PYTORCH_PATH}/include)
 endif(INTEL_EXTENSION_FOR_PYTORCH_PATH)
 
 add_executable(inference_torch_sycl inference_torch_sycl.cpp)
