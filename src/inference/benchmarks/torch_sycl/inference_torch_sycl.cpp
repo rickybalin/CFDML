@@ -1,9 +1,12 @@
 #include <torch/torch.h>
 #include <torch/script.h>
 #include <iostream>
+#include <cstdlib>
 #include <chrono>
 #include <vector>
 #include <numeric>
+#include "sycl/sycl.hpp"
+#include <unistd.h>
 
 int main(int argc, const char* argv[]) 
 {
@@ -58,14 +61,49 @@ int main(int argc, const char* argv[])
   model.to(torch::Device(device));
   std::cout << "Model offloaded to " << device_str << " device \n\n";
 
-  // Create the input Torch tensor
+  // Create the input data on the host
+  //float *inputs = new float[2048*6]();
+  std::vector<float> inputs(3276800*6);
+  srand(12345);
+  for (int i=0; i<3276800*6; i++) {
+    inputs[i] = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+  } 
+  std::cout << "Generated input data on the host \n\n";
+  sleep(10);
+
+  // Move input data to the device
+  /*auto selector;
+  if (strcmp(device_str,"cuda")==0 or strcmp(device_str,"xpu")==0) {
+    selector = sycl::gpu_selector_v;
+  } else {
+    selector = sycl::cpu_selector_v;
+  }*/
+  sycl::queue Q(sycl::gpu_selector_v);
+  std::cout << "SYCL running on "
+            << Q.get_device().get_info<sycl::info::device::name>()
+            << "\n";
+  sleep(10);
+  sycl::buffer<float, 1> inputs_buf((sycl::range<1>(3276800*6)));
+  std::cout << "created buffer\n";
+  sleep(10);
+  Q.submit([&](sycl::handler &cgh) {
+    sycl::accessor inputs_acc{inputs_buf, cgh, sycl::read_write};
+    cgh.copy(inputs.data(), inputs_acc);
+  });
+  std::cout << "after Q.submit\n";
+  sleep(10);
+
+  // Convert input array to Torch tensor
+  // NOTE: the pointer to the input data must reside on same device as
+  //       the specified Torch device
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
-  torch::Tensor input_tensor = torch::rand({2048,6}, options);
+  torch::Tensor input_tensor = torch::from_blob(inputs.data(), {3276800,6}, options);
+  //torch::Tensor input_tensor = torch::from_blob((void *) inputs_acc, {3276800,6}, options);
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
-  std::cout << "Created the input tesor on " << device_str << " device \n\n";
+  std::cout << "Converted input data to Torch tesor on " << device_str << " device \n\n";
 
   // Run inference in a loop and time it
   int niter = 50;
