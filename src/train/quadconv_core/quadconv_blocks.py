@@ -156,7 +156,7 @@ class PoolBlock(nn.Module):
             assert len(ratio) == spatial_dim
 
         num_points = round((in_points/np.prod(ratio))**(1/spatial_dim))
-        self.dim_pack = [ratio[i]*num_points for i in range(spatial_dim)]
+        self.dim_pack = [round(ratio[i]*num_points) for i in range(spatial_dim)]
 
         #set pool type
         self.spatial_dim = spatial_dim

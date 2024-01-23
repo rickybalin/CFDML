@@ -70,12 +70,15 @@ def main(cfg: DictConfig):
     if cfg.repeatability:
         random_seed = 123456789
         random.seed(a=random_seed)
+        np.random.seed(random_seed)
         rng = np.random.default_rng(seed=random_seed)
         torch.manual_seed(random_seed)
         if (cfg.device=='cuda' and torch.cuda.is_available()):
-            torch.cuda.manual_seed(random_seed)
-            torch.backends.cudnn.deterministic = True # only pick deterministic algorithms
-            torch.backends.cudnn.benchmark = False # do not select fastest algorithms
+            torch.cuda.manual_seed_all(random_seed)
+            torch.use_deterministic_algorithms(True, warn_only=True) # only pick deterministic algorithms
+        elif (cfg.device=='xpu' and torch.xpu.is_available()):
+            torch.xpu.manual_seed(random_seed)
+            torch.use_deterministic_algorithms(True, warn_only=True) # only pick deterministic algorithms
     else:
         rng = np.random.default_rng()
 
