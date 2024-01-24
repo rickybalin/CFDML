@@ -69,11 +69,18 @@ int main(int argc, const char* argv[])
 
   // Create the input data on the host
   std::vector<float> inputs(INPUTS_SIZE);
-  srand(12345);
+  srand(123456789);
   for (int i=0; i<INPUTS_SIZE; i++) {
     inputs[i] = static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
   } 
-  std::cout << "Generated input data on the host \n\n";
+  std::cout << "Generated input data on the host \n";
+  for (int i=0; i<5; i++) {
+    for (int j=0; j<N_INPUTS; j++) {
+      std::cout << inputs[i*N_INPUTS+j] << " ";
+    }
+    std::cout << "\n";
+  }
+  std::cout << "\n";
 
   // Move input data to the device with SYCL
   auto selector = sycl::cpu_selector_v;
@@ -119,7 +126,7 @@ int main(int argc, const char* argv[])
 
   // Output the predicted Torch tensor
   std::cout << "Predicted tensor is : \n";
-  std::cout << output.slice(/*dim=*/0, /*start=*/0, /*end=*/10) << '\n';
+  std::cout << output.slice(/*dim=*/0, /*start=*/0, /*end=*/5) << '\n';
 
   return 0;
 }
