@@ -73,6 +73,9 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
 
     # Accumulate loss
     running_loss = running_loss.item() / num_batches
+    print(f"[{comm.rank}]: running loss = {running_loss:>8e}")
+    sys.stdout.flush()
+    comm.comm.Barrier()
     loss_avg = metric_average(comm, running_loss)
     if comm.rank == 0: 
         print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e}")
