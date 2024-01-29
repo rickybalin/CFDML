@@ -101,8 +101,12 @@ int main(int argc, const char* argv[])
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
-  //torch::Tensor input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options); // XPU devices not supported yet for this function
-  torch::Tensor input_tensor = at::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, nullptr, at::device(device).dtype(torch::kFloat32), device).to(device);
+  torch::Tensor input_tensor;
+#ifdef USE_CUDA
+  input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options); // XPU devices not supported yet for this function
+#elif USE_XPU  
+  input_tensor = at::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, nullptr, at::device(device).dtype(torch::kFloat32), device).to(device);
+#endif
   //torch::Tensor input_tensor = xpu::dpcpp::fromUSM(d_inputs, at::ScalarType::Float, {N_SAMPLES,N_INPUTS}, c10::nullopt, -1).to(device); // this approach is deprecated
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
