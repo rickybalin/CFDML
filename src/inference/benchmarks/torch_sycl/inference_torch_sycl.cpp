@@ -133,7 +133,12 @@ int main(int argc, const char* argv[])
 
   // Output the predicted Torch tensor
   std::cout << "Predicted tensor is : \n";
-  std::cout << output.slice(/*dim=*/0, /*start=*/0, /*end=*/5) << '\n';
+  for (int i=0; i<5; i++) {
+    for (int j=0; j<N_INPUTS; j++) {
+      std::cout << output[i][j].item() << " ";
+    }
+    std::cout << "\n";
+  }
 
   return 0;
 }
