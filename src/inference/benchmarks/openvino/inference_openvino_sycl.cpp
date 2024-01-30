@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "openvino/openvino.hpp"
+#include "openvino/runtime/intel_gpu/ocl/ocl.hpp"
 
 const int N_SAMPLES = 2048;
 const int N_INPUTS = 6;
@@ -47,8 +48,7 @@ int main(int argc, const char* argv[])
 
   // Load the model
   std::shared_ptr<ov::Model> model = core.read_model(model_path);
-  ov::CompiledModel compiled_model = core.compile_model(model, device_str);
-  std::cout << "Loaded model to device \n\n";
+  std::cout << "Loaded model \n\n";
 
   // Create the input data on the host
   std::vector<float> inputs(INPUTS_SIZE);
@@ -70,7 +70,7 @@ int main(int argc, const char* argv[])
   if (strcmp(device_str,"CPU")!=0) {
     selector = sycl::gpu_selector_v;
   }
-  sycl::queue Q(selector);
+  sycl::queue Q(selector, sycl::property::queue::in_order{}); // oneDNN needs in order queues
   std::cout << "SYCL running on "
             << Q.get_device().get_info<sycl::info::device::name>()
             << "\n\n";
@@ -78,11 +78,17 @@ int main(int argc, const char* argv[])
   Q.memcpy((void *) d_inputs, (void *) inputs.data(), INPUTS_SIZE*sizeof(float)); 
   Q.wait();
 
+  // Share the SYCL queue and context with the GPU plugin and compile the model
+  auto queue = sycl::get_native<sycl::backend::opencl>(Q);
+  auto remote_context = ov::intel_gpu::ocl::ClContext(core, queue);
+  auto compiled_model = core.compile_model(model, remote_context);
+  
   // Convert input array to OpenVINO Tensor
   ov::element::Type input_type = ov::element::f32;
   ov::Shape input_shape = {N_SAMPLES, N_INPUTS};
-  ov::Tensor input_tensor = ov::Tensor(input_type, input_shape, d_inputs);
-  
+  //ov::Tensor input_tensor = ov::Tensor(input_type, input_shape, d_inputs);
+  auto input_tensor = remote_context.create_tensor(input_type, input_shape, (void *) d_inputs); 
+
   // Run inference in a loop and time it
   int niter = 50;
   ov::InferRequest infer_request = compiled_model.create_infer_request();
