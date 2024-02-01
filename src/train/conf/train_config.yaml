@@ -4,10 +4,10 @@ ppd: 1 # integer - number of MPI processes per device for ML training
 logging: "debug" # no, debug, verbose-perf - type of logging desired
 device: "cpu" # cpu, cuda, xpu - device to train on
 distributed: "ddp" # horovod, ddp - distributed training library
-model: "sgs" # sgs, quadconv - model ID
+model: "sgs" # sgs, quadconv, gnn - model descriptor
 data_path: "synthetic" # string, synthetic - path to training data to load
 num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
-repeatability: False # True, False - make training deterministic
+reproducibility: False # True, False - make training deterministic
 
 # Training hyperparameters config
 epochs: 10 # integer - max number of epochs for training
@@ -35,8 +35,10 @@ sgs:
     layers: 1 # integer - number of hidden layers for SGS model
     comp_model_ins_outs: False # True, False - compute the model inputs and outputs from raw data
 quadconv: 
-    mesh_file: "" # string - path to mesh nodes for QCNN model (offline only)
-    channels: 4 # integer - channels for QCNN model
-    quadconv_config: "" # string - path to config file for QCNN model
+    mesh_file: "" # string - path to mesh nodes for QuadConv model (offline only)
+    channels: 4 # integer - channels for QuadConv model
+    quadconv_config: "./conf/quadconv_config.yaml" # string - path to config file for QuadConv model
+gnn:
+    gnn_config: "./conf/gnn_config.yaml" # string - path to config file for GNN model
     
 

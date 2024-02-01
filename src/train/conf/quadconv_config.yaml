@@ -1,5 +1,4 @@
-#Experiment configuration file.
-
+# QuadConv model configuration file
 _spatial_dim: &spatial_dim 3
 _num_points: &num_points 44121
 _out0: &out0 19456

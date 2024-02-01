@@ -67,7 +67,7 @@ def main(cfg: DictConfig):
                                 timeout=datetime.timedelta(seconds=120))
 
     # Set all seeds if need reproducibility
-    if cfg.repeatability:
+    if cfg.reproducibility:
         random_seed = 123456789
         random.seed(a=random_seed)
         np.random.seed(random_seed)
@@ -92,24 +92,19 @@ def main(cfg: DictConfig):
         client.read_sizeInfo(cfg, comm, t_data)
         client.read_overwrite(comm, t_data)
         #client.read_filters(cfg, t_data)
-        mesh_nodes = client.read_mesh(cfg, comm, t_data)
+        #mesh_nodes = client.read_mesh(cfg, comm, t_data)
 
-    # Load data from file if not launching database
-    if not cfg.online.db_launch:
-        data, mesh_nodes = utils.load_data(cfg, rng)
-        comm.comm.Barrier()
-        if (comm.rank == 0):
-            print("\nLoaded training data \n")
-
-    # Instantiate the NN model 
+    # Instantiate the model and get the training data
+    model, data = models.load_model(cfg, comm, rng)
     if (cfg.model=="sgs"):
+        model, data = models.anisoSGS
         model = models.anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
     elif (cfg.model=="quadconv"):
         mesh_nodes = torch.from_numpy(mesh_nodes)
         model = models.QuadConv(comm.rank, mesh_nodes, cfg.quadconv.quadconv_config, cfg.quadconv.channels)
-    n_params = utils.count_weights(model)
-    if (comm.rank == 0):
-        print(f"\nLoaded model with {n_params} trainable parameters \n")
+    elif (cfg.model=="gnn"):
+        model = models.GNN(cfg.gnn.gnn_config)
+    
 
     # Set device to run on and offload model
     if (comm.rank == 0):

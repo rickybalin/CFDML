@@ -1,0 +1,5 @@
+# GNN model configuration file
+hidden_channels: 16 # int
+n_mlp_layers: [2, 3, 3] # list[int] - [encoder/decoder layers, edge update layers, node update layers] 
+activation: "elu" # str - activation function
+plot_connectivity : False # True,False - plot the connectivity of the graph (can take some time)
