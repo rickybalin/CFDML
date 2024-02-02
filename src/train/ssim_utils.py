@@ -151,16 +151,3 @@ class SmartRedisClient:
                     break
             self.nfilters = filters.size
     
-    # Read the mesh nodes
-    def read_mesh(self, cfg, comm, t_data):
-        mesh_nodes = None
-        if (cfg.model=='quadconv'):
-            rtime = perf_counter()
-            mesh_nodes = self.client.get_tensor('mesh').astype('float32')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1 
-            comm.comm.Barrier()
-            if (comm.comm.rank==0): 
-                print(f"Loaded mesh for QCNN model with size {mesh_nodes.shape}")
-        return mesh_nodes

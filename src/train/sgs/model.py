@@ -126,7 +126,7 @@ class anisoSGS(nn.Module):
         data = np.float32(rng.normal(size=(samples,self.ndIn+self.ndOut)))
         return data
     
-    def load_data(self, cfg: DictConfig) -> np.ndarray:
+    def load_data(self, cfg: DictConfig, comm) -> np.ndarray:
         """"
         Load training data for the model
 

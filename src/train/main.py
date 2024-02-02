@@ -86,6 +86,7 @@ def main(cfg: DictConfig):
     t_data = timeStats()
 
     # Initialize SmartRedis client and gather metadata
+    client = None
     if cfg.online.db_launch:
         client = ssim_utils.SmartRedisClient()
         client.init(cfg, comm, t_data)
@@ -95,17 +96,8 @@ def main(cfg: DictConfig):
         #mesh_nodes = client.read_mesh(cfg, comm, t_data)
 
     # Instantiate the model and get the training data
-    model, data = models.load_model(cfg, comm, rng)
-    if (cfg.model=="sgs"):
-        model, data = models.anisoSGS
-        model = models.anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
-    elif (cfg.model=="quadconv"):
-        mesh_nodes = torch.from_numpy(mesh_nodes)
-        model = models.QuadConv(comm.rank, mesh_nodes, cfg.quadconv.quadconv_config, cfg.quadconv.channels)
-    elif (cfg.model=="gnn"):
-        model = models.GNN(cfg.gnn.gnn_config)
+    model, data = models.load_model(cfg, comm, client, rng, t_data)
     
-
     # Set device to run on and offload model
     if (comm.rank == 0):
         print(f"\nRunning on device: {cfg.device} \n")

@@ -5,11 +5,15 @@
 
 from os.path import exists
 import sys
+import numpy as np
 
 
 ### MPI Communicator class
 class MPI_COMM:
     def __init__(self):
+        """
+        MPI Communicator class
+        """
         self.comm = None
         self.size = None
         self.rank = None
@@ -36,6 +40,9 @@ class MPI_COMM:
 ### Horovod Communicator class
 class HVD_COMM:
     def __init__(self):
+        """
+        Horovod Communicator class
+        """
         self.rank = None
         self.size = None
         self.rankl = None

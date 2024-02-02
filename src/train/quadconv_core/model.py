@@ -6,15 +6,11 @@
 
 from typing import Optional, Union
 from omegaconf import DictConfig
+from time import perf_counter
 import numpy as np
 import torch
 from torch import nn
 import torch.Tensor as Tensor
-try: 
-    import vtk
-    from vtk.util import numpy_support as VN
-except:
-    pass
 
 from .modules import Encoder, Decoder
 from .loss import relative_re, root_relative_re, RRELoss
@@ -25,8 +21,10 @@ except:
     pass
 
 class QuadConv(nn.Module):
-    def __init__(self,*,
-            train_config,):
+    def __init__(self,
+            train_config,
+            client,
+            t_data):
             #spatial_dim,
             #point_seq,
             #quad_map = "newton_cotes_quad",
@@ -62,7 +60,7 @@ class QuadConv(nn.Module):
         self.cfg = load_model_config(train_config.quadconv.quadconv_config)
 
         # Load/generate the mesh nodes
-        mesh_nodes = self.generate_mesh(train_config)
+        mesh_nodes = self.generate_mesh(train_config, client, t_data)
         self.cfg["_num_points"] = mesh_nodes.shape[0]
         point_seq = self.cfg["point_seq"]
         point_seq[0] = mesh_nodes.shape[0]
@@ -74,30 +72,32 @@ class QuadConv(nn.Module):
         # consturct the mesh
         mesh_nodes = torch.from_numpy(mesh_nodes)
         mesh = MeshHandler(mesh_nodes)
-        self.mesh = mesh.construct(point_seq, mirror=True, quad_map=quad_map, quad_args=quad_args)
+        self.mesh = mesh.construct(self.cfg["point_seq"], mirror=True, 
+                                   quad_map=self.cfg["quad_map"], 
+                                   quad_args=self.cfg["quad_args"])
 
         #loss function
-        if loss_fn == "RRELoss":
+        if self.cfg["loss_fn"] == "RRELoss":
             self.loss_fn = RRELoss()
         else:
-            self.loss_fn = getattr(nn, loss_fn)()
+            self.loss_fn = getattr(nn, self.cfg["loss_fn"])()
 
         #activations
-        self.internal_activation = getattr(nn, internal_activation)
-        self.output_activation = getattr(nn, output_activation)()
+        self.internal_activation = getattr(nn, self.cfg["internal_activation"])
+        self.output_activation = getattr(nn, self.cfg["output_activation"])()
 
-        self.encoder = Encoder(spatial_dim=spatial_dim, 
+        self.encoder = Encoder(spatial_dim=self.cfg["spatial_dim"], 
                                forward_activation=self.internal_activation,
                                latent_activation=self.internal_activation,
-                               **kwargs)
-        self.decoder = Decoder(spatial_dim=spatial_dim,
+                               **self.cfg)
+        self.decoder = Decoder(spatial_dim=self.cfg["spatial_dim"],
                                forward_activation=self.internal_activation,
                                latent_activation=self.internal_activation,
-                               **kwargs)
+                               **self.cfg)
 
         #
         if len(load_mesh_weights) == 1:
-            load_mesh_weights = load_mesh_weights*len(point_seq)
+            load_mesh_weights = load_mesh_weights*len(self.cfg["point_seq"])
 
         self.load_mesh_weights = load_mesh_weights
 
@@ -176,10 +176,16 @@ class QuadConv(nn.Module):
             loss = Tensor([0.])
         return error, loss
     
-    def generate_mesh(self, cfg: DictConfig, client=client):
+    def generate_mesh(self, cfg: DictConfig, client, t_data):
         if cfg.online.db_launch:
+            rtime = perf_counter()
+            mesh = client.client.get_tensor('mesh').astype('float32')
+            rtime = perf_counter() - rtime
+            t_data.t_meta = t_data.t_meta + rtime
+            t_data.i_meta = t_data.i_meta + 1 
         else:
             if (cfg.data_path == "synthetic"):
+                N = 32
                 mesh = np.zeros((N**3,3), dtype=np.float32)
                 for i in range(N):
                     x = 0. + 1. * (i - 1) / (N - 1)
@@ -215,7 +221,7 @@ class QuadConv(nn.Module):
         data = np.float32(rng.normal(size=(samples,cfg.quadconv.channels,N**3)))
         return data
     
-    def load_data(self, cfg: DictConfig) -> np.ndarray:
+    def load_data(self, cfg: DictConfig, comm) -> np.ndarray:
         """"
         Load training data for the model
 
