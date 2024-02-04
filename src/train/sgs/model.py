@@ -8,7 +8,6 @@ from typing import Optional, Union
 from omegaconf import DictConfig
 import torch
 import torch.nn as nn
-import torch.Tensor as Tensor
 import numpy as np
 import math as m
 from numpy import linalg as la
@@ -50,7 +49,7 @@ class anisoSGS(nn.Module):
         self.acc_fn = nn.functional.mse_loss #comp_corrCoeff
 
     # Define the method to do a forward pass
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the model
 
@@ -63,7 +62,7 @@ class anisoSGS(nn.Module):
         return x
 
     # Define the methods to do a training, validation and test step
-    def training_step(self, batch: Tensor) -> Tensor:
+    def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Perform a training step
 
@@ -77,7 +76,7 @@ class anisoSGS(nn.Module):
         loss = self.loss_fn(output, target)
         return loss
 
-    def validation_step(self, batch: Tensor) -> tuple(Tensor, Tensor):
+    def validation_step(self, batch: torch.Tensor) -> tuple((torch.Tensor, torch.Tensor)):
         """
         Perform a validation step
 
@@ -92,7 +91,7 @@ class anisoSGS(nn.Module):
         acc = self.acc_fn(prediction, target)
         return acc, loss
 
-    def test_step(self, batch: Tensor, return_loss: Optional[bool] = False) -> tuple(Tensor, Tensor):
+    def test_step(self, batch: torch.Tensor, return_loss: Optional[bool] = False) -> tuple((torch.Tensor, torch.Tensor)):
         """
         Perform a test step
 

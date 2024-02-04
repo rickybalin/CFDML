@@ -10,15 +10,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import torch_geometric as tg
-from tg.data import Data
-import tg.utils as utils
-import tg.nn as tgnn
+import torch_geometric
+from torch_geometric.data import Data
+import torch_geometric.utils as utils
+import torch_geometric.nn as tgnn
 
 import gnn as gnn
-import graph_connectivity as gcon
-import graph_plotting as gplot
-from train.quadconv_core import loss
+import gnn.graph_connectivity as gcon
+import gnn.graph_plotting as gplot
 
 class GNN(nn.Module):
     def __init__(self, train_cfg):

@@ -10,7 +10,6 @@ from time import perf_counter
 import numpy as np
 import torch
 from torch import nn
-import torch.Tensor as Tensor
 
 from .modules import Encoder, Decoder
 from .loss import relative_re, root_relative_re, RRELoss
@@ -101,7 +100,7 @@ class QuadConv(nn.Module):
 
         self.load_mesh_weights = load_mesh_weights
 
-    def encode(self, x: Tensor) -> Tensor:
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of encoder
 
@@ -128,11 +127,11 @@ class QuadConv(nn.Module):
         '''
         return self.decode(self.encode(x))
 
-    def training_step(self, batch: Tensor) -> Tensor:
+    def training_step(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Perform a training step
 
-        :param batch: a tensor containing the batched inputs
+        :param batch: a torch.Tensor containing the batched inputs
         :return: loss for the batch
         """
         latent = self.encode(batch)
@@ -143,11 +142,11 @@ class QuadConv(nn.Module):
         loss = self.loss_fn(output, batch)
         return loss
 
-    def validation_step(self, batch: Tensor) -> tuple(Tensor, Tensor):
+    def validation_step(self, batch: torch.Tensor) -> tuple((torch.Tensor, torch.Tensor)):
         """
         Perform a validation step
 
-        :param batch: a tensor containing the batched inputs and outputs
+        :param batch: a torch.Tensor containing the batched inputs and outputs
         :return: tuple with the accuracy and loss for the batch
         """
         output = self(batch)
@@ -157,7 +156,7 @@ class QuadConv(nn.Module):
         loss = self.loss_fn(output, batch)
         return error, loss
 
-    def test_step(self, batch: Tensor, return_loss: Optional[bool] = False) -> tuple(Tensor, Tensor):
+    def test_step(self, batch: torch.Tensor, return_loss: Optional[bool] = False) -> tuple((torch.Tensor, torch.Tensor)):
         """
         Perform a test step
 
@@ -173,7 +172,7 @@ class QuadConv(nn.Module):
         if return_loss:
             loss = self.loss_fn(output, batch)
         else:
-            loss = Tensor([0.])
+            loss = torch.Tensor([0.])
         return error, loss
     
     def generate_mesh(self, cfg: DictConfig, client, t_data):
@@ -202,7 +201,7 @@ class QuadConv(nn.Module):
                 if "npy" in extension:
                     mesh = np.float32(np.load(cfg.quadconv.mesh_file))
 
-        return torch.from_numpy(mesh)
+        return mesh
 
     
     def create_data(self, cfg: DictConfig, rng) -> np.ndarray:

@@ -105,9 +105,9 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
             # Perform forward pass
             with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
                 if (cfg.distributed=='horovod'):
-                    acc, loss = model.validation_step(data, return_loss=True)
+                    acc, loss = model.validation_step(data)
                 elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.validation_step(data, return_loss=True)
+                    acc, loss = model.module.validation_step(data)
             running_acc += acc
             running_loss += loss
                 
