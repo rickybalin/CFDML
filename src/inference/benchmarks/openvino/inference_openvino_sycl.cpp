@@ -81,7 +81,8 @@ int main(int argc, const char* argv[])
   // Share the SYCL queue and context with the GPU plugin and compile the model
   auto queue = sycl::get_native<sycl::backend::opencl>(Q);
   auto remote_context = ov::intel_gpu::ocl::ClContext(core, queue);
-  auto compiled_model = core.compile_model(model, remote_context);
+  auto compiled_model = core.compile_model(model, remote_context,
+                                           ov::hint::inference_precision("f32"));
   
   // Convert input array to OpenVINO Tensor
   ov::element::Type input_type = ov::element::f32;

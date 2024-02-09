@@ -1,6 +1,7 @@
 # Simple Python script that convert the PyTorch model to the OpenVINO IR
 
 import openvino as ov
+import openvino.properties.hint as hints
 import torch
 import numpy as np
 
@@ -17,7 +18,8 @@ model.to(device)
 output_torch = model(input_data.to(device))
 
 core = ov.runtime.Core()
-compiled_model = core.compile_model(model="NNmodel_HIT.xml", device_name="GPU")
+config = {hints.inference_precision: 'f32'}
+compiled_model = core.compile_model(model="NNmodel_HIT.xml", device_name="GPU", config=config)
 output_ov = torch.tensor(compiled_model(input_data)[0])
 
 print(f"Torch predicted tensor sample: {output_torch[0]}")
