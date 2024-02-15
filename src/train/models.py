@@ -2,7 +2,7 @@
 ##### Wrapper functions for the avaliable models to initialize them
 ##### and load/create their required data structures 
 #####
-import typing
+from typing import Tuple
 from omegaconf import DictConfig
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from quadconv_core.model import QuadConv
 from gnn.model import GNN
 
 
-def load_model(cfg: DictConfig, comm, client, rng, t_data) -> tuple[nn.Module, np.ndarray]: 
+def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, np.ndarray]: 
     """ 
     Return the selected model and its training data
 
@@ -34,7 +34,7 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> tuple[nn.Module, n
     elif (cfg.model=="quadconv"):
         model = QuadConv(cfg, client, t_data)
         if (comm.rank==0):
-            print('Quad-Conv model with configuration:\n')
+            print('Quad-Conv model with configuration:')
             print(model.cfg)
             print("")
     elif (cfg.model=="gnn"):

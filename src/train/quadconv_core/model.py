@@ -85,20 +85,28 @@ class QuadConv(nn.Module):
         self.internal_activation = getattr(nn, self.cfg["internal_activation"])
         self.output_activation = getattr(nn, self.cfg["output_activation"])()
 
-        self.encoder = Encoder(spatial_dim=self.cfg["spatial_dim"], 
+        # Build encoder and decoder
+        self.encoder = Encoder(spatial_dim=self.cfg["spatial_dim"],
+                               stages=self.cfg["stages"],
+                               conv_params=self.cfg["conv_params"],
+                               latent_dim=self.cfg["latent_dim"],
                                forward_activation=self.internal_activation,
                                latent_activation=self.internal_activation,
-                               **self.cfg)
+                               )
         self.decoder = Decoder(spatial_dim=self.cfg["spatial_dim"],
+                               stages=self.cfg["stages"],
+                               conv_params=self.cfg["conv_params"],
+                               latent_dim=self.cfg["latent_dim"],
                                forward_activation=self.internal_activation,
                                latent_activation=self.internal_activation,
-                               **self.cfg)
+                               )
 
-        #
+        # Other initializations
+        load_mesh_weights = self.cfg["load_mesh_weights"]
         if len(load_mesh_weights) == 1:
             load_mesh_weights = load_mesh_weights*len(self.cfg["point_seq"])
-
         self.load_mesh_weights = load_mesh_weights
+        self.noise_scale = self.cfg["noise_scale"]
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -185,17 +193,23 @@ class QuadConv(nn.Module):
         else:
             if (cfg.data_path == "synthetic"):
                 N = 32
-                mesh = np.zeros((N**3,3), dtype=np.float32)
+                spatial_dim = self.cfg["spatial_dim"]
+                mesh = np.zeros((N**spatial_dim,spatial_dim), dtype=np.float32)
                 for i in range(N):
                     x = 0. + 1. * (i - 1) / (N - 1)
                     for j in range(N):
                         y = 0. + 1. * (j - 1) / (N - 1)
-                        for k in range(N):
-                            z = 0. + 1. * (k - 1) / (N - 1)
-                            ind = i*N**2 + j*N +k
+                        if (spatial_dim==2):
+                            ind = i*N + j
                             mesh[ind,0] = x
                             mesh[ind,1] = y
-                            mesh[ind,2] = z
+                        elif (spatial_dim==3):
+                            for k in range(N):
+                                z = 0. + 1. * (k - 1) / (N - 1)
+                                ind = i*N**2 + j*N +k
+                                mesh[ind,0] = x
+                                mesh[ind,1] = y
+                                mesh[ind,2] = z
             else:
                 extension = cfg.quadconv.mesh_file.split(".")[-1]
                 if "npy" in extension:
@@ -217,7 +231,8 @@ class QuadConv(nn.Module):
         else:
             samples = cfg.num_samples_per_rank
         N = 32
-        data = np.float32(rng.normal(size=(samples,cfg.quadconv.channels,N**3)))
+        spatial_dim = self.cfg["spatial_dim"]
+        data = np.float32(rng.normal(size=(samples,cfg.quadconv.channels,N**spatial_dim)))
         return data
     
     def load_data(self, cfg: DictConfig, comm) -> np.ndarray:

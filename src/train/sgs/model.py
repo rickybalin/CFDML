@@ -4,7 +4,7 @@
 # Anisotropic SGS model for LES developed by Aviral Prakash and John A. Evans at Univ. Colorado Boulder
 # A. Prakash, et al. 2023. Invariant Data-Driven Subgrid Stress Modeling on Anisotropic Grids for Large Eddy Simulation. arXiv:2212.00332 [physics.flu-dyn]
 
-from typing import Optional, Union
+from typing import Optional, Tuple
 from omegaconf import DictConfig
 import torch
 import torch.nn as nn
@@ -76,7 +76,7 @@ class anisoSGS(nn.Module):
         loss = self.loss_fn(output, target)
         return loss
 
-    def validation_step(self, batch: torch.Tensor) -> tuple((torch.Tensor, torch.Tensor)):
+    def validation_step(self, batch: torch.Tensor) -> Tuple[(torch.Tensor, torch.Tensor)]:
         """
         Perform a validation step
 
@@ -91,7 +91,7 @@ class anisoSGS(nn.Module):
         acc = self.acc_fn(prediction, target)
         return acc, loss
 
-    def test_step(self, batch: torch.Tensor, return_loss: Optional[bool] = False) -> tuple((torch.Tensor, torch.Tensor)):
+    def test_step(self, batch: torch.Tensor, return_loss: Optional[bool] = False) -> Tuple[(torch.Tensor, torch.Tensor)]:
         """
         Perform a test step
 

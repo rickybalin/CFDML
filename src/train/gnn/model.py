@@ -10,10 +10,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import torch_geometric
-from torch_geometric.data import Data
-import torch_geometric.utils as utils
-import torch_geometric.nn as tgnn
+try: 
+    import torch_geometric
+    from torch_geometric.data import Data
+    import torch_geometric.utils as utils
+    import torch_geometric.nn as tgnn
+except:
+    pass
 
 import gnn as gnn
 import gnn.graph_connectivity as gcon

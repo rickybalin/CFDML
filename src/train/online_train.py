@@ -48,7 +48,7 @@ def online_train(comm, model, train_tensor_loader, optimizer, scaler, mixed_dtyp
             concat_tensor = torch.stack([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                              for key in tensor_keys], dim=0)
         rtime = perf_counter() - rtime
-        if (epoch>2):
+        if (epoch>1):
             t_data.t_getBatch = t_data.t_getBatch + rtime
             t_data.i_getBatch = t_data.i_getBatch + 1
             fact = float(1.0/t_data.i_getBatch)
@@ -80,7 +80,7 @@ def online_train(comm, model, train_tensor_loader, optimizer, scaler, mixed_dtyp
                 loss.backward()
                 optimizer.step()
             rtime = perf_counter() - rtime
-            if (epoch>2):
+            if (epoch>1):
                 t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
                 t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
                 fact = float(1.0/t_data.i_compMiniBatch)
@@ -382,7 +382,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             acc_avg, corr_avg = online_validate(comm, model, val_tensor_loader, 
                                                 mixed_dtype, iepoch, client, cfg)
         toc_l = perf_counter()
-        if (iepoch>2):
+        if (iepoch>1):
             t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1

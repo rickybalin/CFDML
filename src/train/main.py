@@ -18,6 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 from online_train import onlineTrainLoop
 from offline_train import offlineTrainLoop
 import models
+import quadconv_core
 from time_prof import timeStats
 import utils
 import ssim_utils
@@ -144,8 +145,8 @@ def main(cfg: DictConfig):
             module = torch.jit.trace(model, testData)
             torch.jit.save(module, f"{cfg.name}_jit.pt")
         elif (cfg.model=="quadconv"):
-            encoder = models.quadconvEncoder(model.encoder, model.mesh)
-            decoder = models.quadconvDecoder(model.decoder, model.mesh, model.output_activation)
+            encoder = quadconv_core.model.quadconvEncoder(model.encoder, model.mesh)
+            decoder = quadconv_core.model.quadconvDecoder(model.decoder, model.mesh, model.output_activation)
             dummy_latent = encoder(testData).detach()
             predicted = decoder(dummy_latent).detach()
             module_encode = torch.jit.trace(encoder, testData)
@@ -161,10 +162,11 @@ def main(cfg: DictConfig):
 
     
     # Collect timing statistics
-    if (comm.rank==0):
-        print("\nTiming data:")
-        sys.stdout.flush()
-    t_data.printTimeData(cfg, comm)
+    if (t_data.i_train>0):
+        if (comm.rank==0):
+            print("\nTiming data (excluding first epoch):")
+            sys.stdout.flush()
+        t_data.printTimeData(cfg, comm)
  
 
     # Exit

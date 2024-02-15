@@ -60,13 +60,13 @@ class timeStats:
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             #stats_string_2 = f": min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]"
-            print("Total training time (excluding first 2 epochs) [s] " + stats_string + "\n")
+            print("Total training time [s] " + stats_string + "\n")
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_train)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             print("Total time spent in training loop [s] " + stats_string)
-        avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_train/(cfg.epochs-2))
+        avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_train/self.i_train)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
             print("Total training throughput [samples/s] " + stats_string)
@@ -90,7 +90,7 @@ class timeStats:
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             print(f"Total time spent in validation loop [s] " + stats_string)
-        avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_val/(cfg.epochs-2))
+        avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_val/self.i_val)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
             print(f"Total validation throughput [samples/s] " + stats_string)

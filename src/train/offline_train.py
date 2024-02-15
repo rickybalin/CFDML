@@ -55,7 +55,7 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
                 loss.backward()
                 optimizer.step()
             rtime = perf_counter() - rtime
-            if (epoch>1):
+            if (epoch>0):
                 t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
                 t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
                 fact = float(1.0/t_data.i_compMiniBatch)
@@ -249,7 +249,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
                                                                 val_dataloader, 
                                                                 mixed_dtype, ep, cfg)
             toc_v = perf_counter()
-            if (ep>1):
+            if (ep>0):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
@@ -259,7 +259,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             scheduler.step(global_val_loss)
 
         toc_l = perf_counter()
-        if (ep>1):
+        if (ep>0):
             t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
