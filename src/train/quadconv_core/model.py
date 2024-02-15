@@ -24,33 +24,8 @@ class QuadConv(nn.Module):
             train_config,
             client,
             t_data):
-            #spatial_dim,
-            #point_seq,
-            #quad_map = "newton_cotes_quad",
-            #quad_args = {},
-            #loss_fn = "MSELoss",
-            #optimizer = "Adam",
-            #learning_rate = 1e-2,
-            #noise_scale = 0.0,
-            #internal_activation = "CELU",
-            #output_activation = "Tanh",
-            #load_mesh_weights = [True],
-            #**kwargs
-            #):
         '''
-        Quadrature convolution autoencoder.
-
-        Input:
-            spatial_dim: spatial dimension of data
-            point_seq:
-            data_info:
-            loss_fn: loss function specification
-            optimizer: optimizer specification
-            learning_rate: learning rate
-            noise_scale: scale of noise to be added to latent representation in training
-            internal_activation: activation of internal layers
-            output_activation: final activation
-            kwargs: keyword arguments to be passed to encoder and decoder
+        Quadrature convolution autoencoder
         '''
 
         super().__init__()

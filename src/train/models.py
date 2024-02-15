@@ -11,10 +11,7 @@ import numpy as np
 from utils import count_weights
 
 from sgs.model import anisoSGS
-
 from quadconv_core.model import QuadConv
-
-
 from gnn.model import GNN
 
 

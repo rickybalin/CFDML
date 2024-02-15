@@ -4,11 +4,14 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-import torch_geometric.nn as tgnn
-from torch_scatter import scatter_mean
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.typing import Adj, OptTensor, PairTensor
-from pooling import TopKPooling_Mod, avg_pool_mod, avg_pool_mod_no_x
+try:
+    import torch_geometric.nn as tgnn
+    from torch_scatter import scatter_mean
+    from torch_geometric.nn.conv import MessagePassing
+    from torch_geometric.typing import Adj, OptTensor, PairTensor
+    from pooling import TopKPooling_Mod, avg_pool_mod, avg_pool_mod_no_x
+except:
+    pass
 
 class mp_gnn(torch.nn.Module):
     def __init__(self, 

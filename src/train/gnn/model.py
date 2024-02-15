@@ -18,7 +18,8 @@ try:
 except:
     pass
 
-import gnn as gnn
+import gnn
+from gnn.gnn import mp_gnn
 import gnn.graph_connectivity as gcon
 import gnn.graph_plotting as gplot
 
@@ -27,8 +28,9 @@ class GNN(nn.Module):
         """
         Distributed Graph Neural Network
         """
+        super().__init__()
         # Build model
-        self.cfg = self.load_model_config(train_cfg.gnn)
+        self.cfg = self.load_model_config(train_cfg.gnn.gnn_config)
         self.input_channels = train_cfg.gnn.input_channels
         self.output_channels = train_cfg.gnn.output_channels
         self.model = self.build_model(self.input_channels, self.output_channels)
@@ -40,10 +42,10 @@ class GNN(nn.Module):
         self.idx_reduced2full = None
 
         # Define the loss and accuracy functions
-        self.loss_fn = nn.MSE()
-        self.acc_fn = nn.MSE()
+        self.loss_fn = nn.MSELoss()
+        self.acc_fn = nn.MSELoss()
 
-    def load_model_config(config_path: str):
+    def load_model_config(self, config_path: str):
         """
         Load the config file for the GNN model
         :param config_path: path to model config file
@@ -63,15 +65,15 @@ class GNN(nn.Module):
         :param output_channels: Number of output channels
         :return: GNN model
         """
-        activation = getattr(F, self.cfg.activation)
-        model = gnn.mp_gnn(input_channels, 
-                           self.cfg.hidden_channels, 
+        activation = getattr(F, self.cfg["activation"])
+        model = mp_gnn(input_channels, 
+                           self.cfg["hidden_channels"], 
                            output_channels, 
-                           self.cfg.n_mlp_layers, 
+                           self.cfg["n_mlp_layers"], 
                            activation)
         return model
     
-    def setup_local_graph(self, train_cfg, client, comm):
+    def setup_local_graph(self, train_cfg, comm, client):
         """
         Setup the rank-local graph from the mesh data
         :param train_cfg: training config

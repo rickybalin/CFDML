@@ -29,7 +29,7 @@ class anisoSGS(nn.Module):
         :param numNeurons: optional parameter for the number of neurons in each layer of the model
         :param numLayers: optional parameter for the number of layers of the model
         """
-
+        
         super().__init__()
         self.ndIn = inputDim
         self.ndOut = outputDim
