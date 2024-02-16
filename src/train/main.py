@@ -114,8 +114,6 @@ def main(cfg: DictConfig):
             torch.xpu.set_device(xpu_id)
     if (cfg.device != 'cpu'):
         model.to(device)
-        if (cfg.model=='quadconv'):
-            mesh_nodes = mesh_nodes.to(device)
     if (comm.rank == 0):
         print(f"\nRunning on device: {cfg.device} \n")
         sys.stdout.flush()
