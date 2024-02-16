@@ -155,14 +155,15 @@ class anisoSGS(nn.Module):
                 features, targets = self.comp_ins_outs_SGS(polydata)
             data = np.hstack((features,targets))
 
-        # Scale the data to [0,1] range
-        if (np.amin(data[:,0]) < 0 or np.amax(data[:,0]) > 1):
+        # Scale the outputs to [0,1] range
+        if (np.amin(data[:,self.ndIn]) < 0 or np.amax(data[:,self.ndIn]) > 1):
             with open(cfg.name+"_scaling.dat", "w") as fh:
                 for i in range(6):
-                    min_val = np.amin(data[:,i])
-                    max_val = np.amax(data[:,i])
+                    ind = self.ndIn+i
+                    min_val = np.amin(data[:,ind])
+                    max_val = np.amax(data[:,ind])
                     fh.write(f"{min_val:>8e} {max_val:>8e}\n")
-                    data[:,i] = (data[:,i] - min_val)/(max_val - min_val)
+                    data[:,ind] = (data[:,ind] - min_val)/(max_val - min_val)
 
         return data
     
