@@ -7,10 +7,14 @@
 from typing import Optional, Union
 from omegaconf import DictConfig
 from time import perf_counter
+import math as m
 import numpy as np
 import torch
 from torch import nn
+from torch.utils.data import random_split, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
+from datasets import OfflineDataset
 from .modules import Encoder, Decoder
 from .loss import relative_re, root_relative_re, RRELoss
 from .utils import load_model_config
@@ -230,31 +234,80 @@ class QuadConv(nn.Module):
                 fh.write(f"{min_val:>8e} {max_val:>8e}\n")
                 data[:,i,:] = 2.0*(data[:,i,:] - min_val)/(max_val - min_val) - 1.0
         return data
+    
+    def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
+        """
+        Prepare the training and validation data loaders 
 
-    def on_load_checkpoint(self, checkpoint):
-        '''
-        Edit the checkpoint state_dict
-        '''
+        :param data: training data
+        :param cfg: DictConfig with training configuration parameters
+        :param comm: MPI communication class
+        :return: tuple of DataLoaders 
+        """
+        # DataSet
+        samples = data.shape[0]
+        nVal = m.floor(samples*cfg.validation_split)
+        nTrain = samples-nVal
+        if (nVal==0 and cfg.validation_split>0):
+            if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
+        dataset = OfflineDataset(data)
+        trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
 
-        state_dict = checkpoint["state_dict"]
-        for param_name in list(state_dict.keys()):
-            if param_name[:4] == "mesh":
-                if self.load_mesh_weights.pop(0) == False:
-                    state_dict.pop(param_name)
+        # DataLoader
+        # Try:
+        # - pin_memory=True - should be faster for GPU training
+        # - num_workers > 1 - enables multi-process data loading 
+        # - prefetch_factor >1 - enables pre-fetching of data
+        if (cfg.data_path == "synthetic"):
+            # Each rank has loaded only their part of training data
+            train_sampler = None
+            val_sampler = None
+            val_dataloader = None
+            train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
+                                          shuffle=True, drop_last=True) 
+            if (nVal>0):
+                val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
+                                            drop_last=True)
+        else:
+            # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
+            val_sampler = None
+            val_dataloader = None
+            train_sampler = DistributedSampler(trainDataset, num_replicas=comm.size, rank=comm.rank,
+                                           shuffle=True, drop_last=True) 
+            train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
+                                  sampler=train_sampler)
+            if (nVal>0):
+                val_sampler = DistributedSampler(valDataset, num_replicas=comm.size, rank=comm.rank,
+                                                 drop_last=True) 
+                val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
+                                            sampler=val_sampler)
+                
+        return {
+            'train': {
+                'loader': train_dataloader,
+                'sampler': train_sampler,
+                'samples': nTrain
+            },
+            'validation': {
+                'loader': val_dataloader,
+                'sampler': val_sampler,
+                'samples': nVal
+            }
+        }
 
-        return
+    def save_checkpoint(self, fname: str, data: torch.Tensor):
+        torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
+        encoder = quadconvEncoder(self.encoder, self.mesh)
+        decoder = quadconvDecoder(self.decoder, self.mesh, self.output_activation)
+        dummy_latent = encoder(data).detach()
+        predicted = decoder(dummy_latent).detach()
+        module_encode = torch.jit.trace(encoder, data)
+        torch.jit.save(module_encode, f"{fname}_encoder_jit.pt")
+        dummy_latent = module_encode(data).detach()
+        module_decode = torch.jit.trace(decoder, dummy_latent)
+        torch.jit.save(module_decode, f"{fname}_decoder_jit.pt")
+        predicted = module_decode(dummy_latent).detach()
 
-    def on_save_checkpoint(self, checkpoint):
-        '''
-        Edit the checkpoint state_dict
-        '''
-
-        state_dict = checkpoint["state_dict"]
-        for param_name in list(state_dict.keys()):
-            if param_name[:12] == "mesh._points" or param_name[-12:] == "eval_indices":
-                state_dict.pop(param_name)
-
-        return
     
 
 # Classes used for tracing the encoder and decoder separately

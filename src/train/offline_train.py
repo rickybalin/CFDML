@@ -11,20 +11,19 @@ import math as m
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import random_split, DataLoader
-from torch.utils.data.distributed import DistributedSampler
 try:
     from torch.cuda.amp import autocast, GradScaler
     from torch.xpu.amp import autocast, GradScaler
 except:
     pass
+
+from torch.nn.parallel import DistributedDataParallel as DDP
 try:
     import horovod.torch as hvd
 except:
     pass
 
 from utils import metric_average
-from datasets import OfflineDataset
 
 ### Train the model
 def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
@@ -142,6 +141,9 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
 ### Main online training loop driver
 def offlineTrainLoop(cfg, comm, t_data, model, data):
+    """
+    Set up and execute the loop over epochs for offline learning
+    """
     # Set precision of model and data
     if (cfg.precision == "fp32" or cfg.precision == "tf32"):
         model.float()
@@ -169,39 +171,19 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     #if (cfg.device != 'cpu'):
     #    data = data.to(cfg.device)
 
-    # Split data and create datasets
-    samples = data.shape[0]
-    nVal = m.floor(samples*cfg.validation_split)
-    nTrain = samples-nVal
-    if (nVal==0 and cfg.validation_split>0):
-        if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
-    dataset = OfflineDataset(data)
-    trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
+    # Prepare training and validation data loaders
+    loaders = model.setup_dataloaders(data, cfg, comm)
+    train_loader = loaders["train"]["loader"]
+    train_sampler = loaders["train"]["sampler"]
+    nTrain = loaders["train"]["samples"]
+    val_loader = loaders["validation"]["loader"]
+    nVal = loaders["validation"]["samples"]
+    
+    # Initializa DDP model
+    if (cfg.distributed=='ddp'):
+        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
-    # Data loader
-    # Try:
-    # - pin_memory=True - should be faster for GPU training
-    # - num_workers > 1 - enables multi-process data loading 
-    # - prefetch_factor >1 - enables pre-fetching of data
-    if (cfg.data_path == "synthetic"):
-        train_sampler = None
-        val_sampler = None
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                      shuffle=True, drop_last=True) 
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
-                                    drop_last=True)
-    else:
-        # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
-        train_sampler = DistributedSampler(trainDataset, num_replicas=comm.size, rank=comm.rank,
-                                           shuffle=True, drop_last=True)
-        val_sampler = DistributedSampler(valDataset, num_replicas=comm.size, rank=comm.rank,
-                                         drop_last=True)  
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                  sampler=train_sampler)
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
-                                sampler=val_sampler)
-
-    # Initialize optimizer
+    # Initialize optimizer and scheduler
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
     elif (cfg.optimizer == "RAdam"):
@@ -231,28 +213,28 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         if train_sampler:
             train_sampler.set_epoch(ep)
         tic_t = perf_counter()
-        global_loss, t_data = offline_train(comm, model, train_dataloader, 
+        global_loss, t_data = offline_train(comm, model, train_loader, 
                                             optimizer, scaler, mixed_dtype,
                                             ep, t_data, cfg)
         toc_t = perf_counter()
 
         # Validate
-        if (nVal==0):
-            global_val_loss = global_loss
-            if (cfg.model=='sgs'):
-                valData = data[cfg.mini_batch,6:].to(cfg.device)
-            else:
-                valData = data.to(cfg.device)
-        else:
+        if (val_loader is not None):
             tic_v = perf_counter()
             global_acc, global_val_loss, valData = offline_validate(comm, model, 
-                                                                val_dataloader, 
+                                                                val_loader, 
                                                                 mixed_dtype, ep, cfg)
             toc_v = perf_counter()
             if (ep>0):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
+        else:
+            global_val_loss = global_loss
+            if (cfg.model=='sgs'):
+                valData = data[cfg.mini_batch,6:].to(cfg.device)
+            else:
+                valData = data.to(cfg.device)
 
         # Apply scheduler
         if (cfg.scheduler == "Plateau"):

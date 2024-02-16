@@ -90,10 +90,11 @@ class timeStats:
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             print(f"Total time spent in validation loop [s] " + stats_string)
-        avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_val/self.i_val)
-        if comm.rank==0:
-            stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-            print(f"Total validation throughput [samples/s] " + stats_string)
+        if (self.i_val>0):
+            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_val/self.i_val)
+            if comm.rank==0:
+                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
+                print(f"Total validation throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_val)
         if comm.rank==0:
             print(f"Number of validation loops executed : {int(avg)}\n")

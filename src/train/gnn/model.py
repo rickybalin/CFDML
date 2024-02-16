@@ -4,7 +4,7 @@
 ### Distributed GNN developed by Shivam Barwey at Argonne National Laboratory
 
 import yaml
-import typing
+from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
@@ -15,6 +15,8 @@ try:
     from torch_geometric.data import Data
     import torch_geometric.utils as utils
     import torch_geometric.nn as tgnn
+    from torch_geometric.loader import DataLoader
+    from torch_geometric.transforms import Cartesian, Distance
 except:
     pass
 
@@ -36,8 +38,8 @@ class GNN(nn.Module):
         self.model = self.build_model(self.input_channels, self.output_channels)
 
         # Initialize local graph data structures
-        self.data_reduced = None
-        self.data_full = None
+        self.graph_reduced = None
+        self.graph_full = None
         self.idx_full2reduced = None
         self.idx_reduced2full = None
 
@@ -45,7 +47,7 @@ class GNN(nn.Module):
         self.loss_fn = nn.MSELoss()
         self.acc_fn = nn.MSELoss()
 
-    def load_model_config(self, config_path: str):
+    def load_model_config(self, config_path: str) -> dict: 
         """
         Load the config file for the GNN model
         :param config_path: path to model config file
@@ -130,44 +132,58 @@ class GNN(nn.Module):
                 halo_unique_mask = np.loadtxt(path_to_unique_halo, dtype=np.int64)
 
         # Make the full graph
-        self.data_full = Data(x = None, edge_index = torch.tensor(ei), pos = torch.tensor(pos), 
+        self.graph_full = Data(x = None, edge_index = torch.tensor(ei), pos = torch.tensor(pos), 
                          global_ids = torch.tensor(gli.squeeze()), local_unique_mask = torch.tensor(local_unique_mask), 
                          halo_unique_mask = torch.tensor(halo_unique_mask))
-        self.data_full.edge_index = utils.remove_self_loops(self.data_full.edge_index)[0]
-        self.data_full.edge_index = utils.coalesce(self.data_full.edge_index)
-        self.data_full.edge_index = utils.to_undirected(self.data_full.edge_index)
-        self.data_full.local_ids = torch.tensor(range(self.data_full.pos.shape[0]))
+        self.graph_full.edge_index = utils.remove_self_loops(self.graph_full.edge_index)[0]
+        self.graph_full.edge_index = utils.coalesce(self.graph_full.edge_index)
+        self.graph_full.edge_index = utils.to_undirected(self.graph_full.edge_index)
+        self.graph_full.local_ids = torch.tensor(range(self.graph_full.pos.shape[0]))
 
         # Get reduced (non-overlapping) graph and indices to go from full to reduced  
-        self.data_reduced, self.idx_full2reduced = gcon.get_reduced_graph(self.data_full)
+        self.graph_reduced, self.idx_full2reduced = gcon.get_reduced_graph(self.graph_full)
 
         # Get the indices to go from reduced back to full graph  
-        self.idx_reduced2full = gcon.get_upsample_indices(self.data_full, self.data_reduced, self.idx_full2reduced)
+        self.idx_reduced2full = gcon.get_upsample_indices(self.graph_full, self.graph_reduced, self.idx_full2reduced)
 
-    def training_step(self, batch):
-        output = self.model(batch.x, self.data_reduced.edge_index, 
-                            self.data_reduced.edge_attr, 
-                            self.data_reduced.pos, self.data_reduced.batch)
+    def training_step(self, batch) -> torch.Tensor:
+        """
+        Perform a training step
+
+        :param batch: a torch.Tensor containing the batched inputs
+        :return: loss for the batch
+        """
+        output = self.model(batch.x, batch.edge_index, 
+                            batch.edge_attr, 
+                            batch.pos, batch.batch)
         loss = self.loss_fn(output, batch.y)
         return loss
     
-    def validation_step(self, batch, return_loss=False):
-        output = self.model(batch.x, self.data_reduced.edge_index, 
-                            self.data_reduced.edge_attr, 
-                            self.data_reduced.pos, self.data_reduced.batch)
-        error = self.loss_fn(output, batch.y)
+    def validation_step(self, batch) -> torch.Tensor:
+        """
+        Perform a validation step
 
-        if return_loss:
-            # compute loss to compare agains training
-            loss = self.loss_fn(output, batch.y)
-            return error, loss
-        else:
-            return error
+        :param batch: a torch.Tensor containing the batched inputs and outputs
+        :return: tuple with the accuracy and loss for the batch
+        """
+        output = self.model(batch.x, batch.edge_index, 
+                            batch.edge_attr, 
+                            batch.pos, batch.batch)
+        error = self.loss_fn(output, batch.y)
+        loss = self.loss_fn(output, batch.y)
+        return error, loss
         
-    def test_step(self, batch, return_loss=False):
-        output = self.model(batch.x, self.data_reduced.edge_index, 
-                            self.data_reduced.edge_attr, 
-                            self.data_reduced.pos, self.data_reduced.batch)
+    def test_step(self, batch, return_loss: Optional[bool] = False) -> torch.Tensor:
+        """
+        Perform a test step
+
+        :param batch: a tensor containing the batched inputs and outputs
+        :param return_loss: whether to compute the loss on the testing data
+        :return: tuple with the accuracy and loss for the batch
+        """
+        output = self.model(batch.x, batch.edge_index, 
+                            batch.edge_attr, 
+                            batch.pos, batch.batch)
         error = self.loss_fn(output, batch.y)
 
         if return_loss:
@@ -185,7 +201,7 @@ class GNN(nn.Module):
         :param rng: numpy random number generator
         :return: numpy array with the rank-local training data 
         """
-        n_nodes = self.data_reduced.pos.shape[0]
+        n_nodes = self.graph_reduced.pos.shape[0]
         data = np.float32(rng.normal(size=(n_nodes,self.input_channels+self.output_channels)))
         return data
     
@@ -204,9 +220,77 @@ class GNN(nn.Module):
         path_to_y = main_path + y_key
         data_x = np.loadtxt(path_to_x, ndmin=2, dtype=np.float32)
         data_y = np.loadtxt(path_to_y, ndmin=2, dtype=np.float32)
+        assert data_x.shape[1] == self.input_channels, \
+            f"Created model with {self.input_channels} input channels, but loaded data has {data_x.shape[1]}"
+        assert data_y.shape[1] == self.output_channels, \
+            f"Created model with {self.output_channels} output channels, but loaded data has {data_y.shape[1]}"
 
         # Get data in reduced format (non-overlapping)
         data_x_reduced = data_x[self.idx_full2reduced, :]
         data_y_reduced = data_y[self.idx_full2reduced, :]
         data = np.hstack((data_x_reduced, data_y_reduced))
         return data
+    
+    def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
+        """
+        Prepare the training and validation data loaders 
+
+        :param data: training data
+        :param cfg: DictConfig with training configuration parameters
+        :param comm: MPI communication class
+        :return: tuple of DataLoaders 
+        """
+        # Populate edge_attrs
+        cart = Cartesian(norm=False, max_value = None, cat = False)
+        dist = Distance(norm = False, max_value = None, cat = True)
+        self.graph_reduced = cart(self.graph_reduced) # adds cartesian/component-wise distance
+        self.graph_reduced = dist(self.graph_reduced) # adds euclidean distance
+
+        # Create training dataset
+        reduced_graph_dict = self.graph_reduced.to_dict()
+        data_train_list = []
+        data_temp = Data(   
+                            x = data[:,:self.input_channels], 
+                            y = data[:,self.input_channels:]
+                        )
+        for key in reduced_graph_dict.keys():
+            data_temp[key] = reduced_graph_dict[key]
+        data_train_list.append(data_temp)
+        nTrain = len(data_train_list) # 1 for now
+        train_dataset = data_train_list
+       
+        # Create validation dataset -- same as train data for now
+        data_valid_list = []
+        data_temp = Data(   
+                            x = data[:,:self.input_channels], 
+                            y = data[:,self.input_channels:]
+                        )
+        for key in reduced_graph_dict.keys():
+            data_temp[key] = reduced_graph_dict[key]
+        data_valid_list.append(data_temp)
+        nVal = len(data_valid_list) # 1 for now
+        val_dataset = data_valid_list 
+
+        # No need for distributed samplers, each ranks loads it's own data
+        train_sampler = None
+        val_sampler = None
+        train_dataloader = DataLoader(train_dataset, batch_size=cfg.mini_batch, 
+                                      shuffle=False)
+        val_dataloader = DataLoader(val_dataset, batch_size=cfg.mini_batch, 
+                                    shuffle=False)  
+
+        return {
+            'train': {
+                'loader': train_dataloader,
+                'sampler': train_sampler,
+                'samples': nTrain
+            },
+            'validation': {
+                'loader': val_dataloader,
+                'sampler': val_sampler,
+                'samples': nVal
+            }
+        }
+    
+    def save_checkpoint(self, fname: str, data: torch.Tensor):
+        torch.save(self.model.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)

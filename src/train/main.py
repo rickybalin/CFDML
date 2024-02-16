@@ -50,7 +50,7 @@ def main(cfg: DictConfig):
     elif (cfg.distributed=='ddp'):
         import socket
         import torch.distributed as dist
-        from torch.nn.parallel import DistributedDataParallel as DDP
+        #from torch.nn.parallel import DistributedDataParallel as DDP
         os.environ['RANK'] = str(comm.rank)
         os.environ['WORLD_SIZE'] = str(comm.size)
         master_addr = socket.gethostname() if comm.rank == 0 else None
@@ -100,9 +100,6 @@ def main(cfg: DictConfig):
     model, data = models.load_model(cfg, comm, client, rng, t_data)
     
     # Set device to run on and offload model
-    if (comm.rank == 0):
-        print(f"\nRunning on device: {cfg.device} \n")
-        sys.stdout.flush()
     device = torch.device(cfg.device)
     torch.set_num_threads(1)
     if (cfg.device == 'cuda'):
@@ -123,10 +120,13 @@ def main(cfg: DictConfig):
         model.to(device)
         if (cfg.model=='quadconv'):
             mesh_nodes = mesh_nodes.to(device)
+    if (comm.rank == 0):
+        print(f"\nRunning on device: {cfg.device} \n")
+        sys.stdout.flush()
 
     # Initializa DDP model
-    if (cfg.distributed=='ddp'):
-        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+    #if (cfg.distributed=='ddp'):
+    #    model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
     # Train model
     if cfg.online.db_launch:
@@ -139,23 +139,8 @@ def main(cfg: DictConfig):
         model = model.module
         dist.destroy_process_group()
     if (comm.rank == 0):
-        torch.save(model.state_dict(), f"{cfg.name}.pt", _use_new_zipfile_serialization=False)
         model.eval()
-        if (cfg.model=="sgs"):
-            module = torch.jit.trace(model, testData)
-            torch.jit.save(module, f"{cfg.name}_jit.pt")
-        elif (cfg.model=="quadconv"):
-            encoder = quadconv_core.model.quadconvEncoder(model.encoder, model.mesh)
-            decoder = quadconv_core.model.quadconvDecoder(model.decoder, model.mesh, model.output_activation)
-            dummy_latent = encoder(testData).detach()
-            predicted = decoder(dummy_latent).detach()
-            module_encode = torch.jit.trace(encoder, testData)
-            torch.jit.save(module_encode, f"{cfg.name}_encoder_jit.pt")
-            dummy_latent = module_encode(testData).detach()
-            module_decode = torch.jit.trace(decoder, dummy_latent)
-            torch.jit.save(module_decode, f"{cfg.name}_decoder_jit.pt")
-            predicted = module_decode(dummy_latent).detach()
-
+        model.save_checkpoint(cfg.name, testData)
         print("")
         print("Saved model to disk\n")
         sys.stdout.flush()

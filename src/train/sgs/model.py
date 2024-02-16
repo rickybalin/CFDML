@@ -6,16 +6,20 @@
 
 from typing import Optional, Tuple
 from omegaconf import DictConfig
-import torch
-import torch.nn as nn
 import numpy as np
 import math as m
 from numpy import linalg as la
+import torch
+import torch.nn as nn
+from torch.utils.data import random_split, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 try: 
     import vtk
     from vtk.util import numpy_support as VN
 except:
     pass
+
+from datasets import OfflineDataset
 
 
 class anisoSGS(nn.Module): 
@@ -130,6 +134,7 @@ class anisoSGS(nn.Module):
         Load training data for the model
 
         :param cfg: DictConfig with training configuration parameters
+        :param comm: MPI communication class
         :return: numpy array with the rank-local training data 
         """
         
@@ -161,6 +166,71 @@ class anisoSGS(nn.Module):
 
         return data
     
+    def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
+        """
+        Prepare the training and validation data loaders 
+
+        :param data: training data
+        :param cfg: DictConfig with training configuration parameters
+        :param comm: MPI communication class
+        :return: tuple of DataLoaders 
+        """
+        # DataSet
+        samples = data.shape[0]
+        nVal = m.floor(samples*cfg.validation_split)
+        nTrain = samples-nVal
+        if (nVal==0 and cfg.validation_split>0):
+            if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
+        dataset = OfflineDataset(data)
+        trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
+
+        # DataLoader
+        # Try:
+        # - pin_memory=True - should be faster for GPU training
+        # - num_workers > 1 - enables multi-process data loading 
+        # - prefetch_factor >1 - enables pre-fetching of data
+        if (cfg.data_path == "synthetic"):
+            # Each rank has loaded only their part of training data
+            train_sampler = None
+            val_sampler = None
+            val_dataloader = None
+            train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
+                                          shuffle=True, drop_last=True) 
+            if (nVal>0):
+                val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
+                                            drop_last=True)
+        else:
+            # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
+            val_sampler = None
+            val_dataloader = None
+            train_sampler = DistributedSampler(trainDataset, num_replicas=comm.size, rank=comm.rank,
+                                           shuffle=True, drop_last=True) 
+            train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
+                                  sampler=train_sampler)
+            if (nVal>0):
+                val_sampler = DistributedSampler(valDataset, num_replicas=comm.size, rank=comm.rank,
+                                                 drop_last=True) 
+                val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
+                                            sampler=val_sampler)
+                
+        return {
+            'train': {
+                'loader': train_dataloader,
+                'sampler': train_sampler,
+                'samples': nTrain
+            },
+            'validation': {
+                'loader': val_dataloader,
+                'sampler': val_sampler,
+                'samples': nVal
+            }
+        }
+
+    def save_checkpoint(self, fname: str, data: torch.Tensor):
+        torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
+        module = torch.jit.trace(self, data)
+        torch.jit.save(module, f"{fname}_jit.pt")
+
     def comp_ins_outs_SGS(self, polydata, alignment="vorticity"):
         """
         Compute the inputs and outputs for the anisotropic SGS model from raw data
