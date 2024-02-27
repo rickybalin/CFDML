@@ -20,10 +20,13 @@ try:
 except:
     pass
 
-import gnn
-from gnn.gnn import mp_gnn
-import gnn.graph_connectivity as gcon
-import gnn.graph_plotting as gplot
+try:
+    import gnn
+    from gnn.gnn import mp_gnn
+    import gnn.graph_connectivity as gcon
+    import gnn.graph_plotting as gplot
+except:
+    pass
 
 class GNN(nn.Module):
     def __init__(self, train_cfg):
