@@ -50,8 +50,8 @@ def launch_coDB(cfg, nodelist, nNodes):
         sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
         sim_settings.add_exe_args(cfg.sim.arguments)
         if (cfg.sim.affinity):
-            sim_settings.set_gpu_affinity_script(cfg.sim.affinity,
-                                                 cfg.run_args.simprocs_pn)
+            sim_settings.set_gpu_affinity_script(cfg.sim.affinity)
+                                                 #cfg.run_args.simprocs_pn)
 
     # Create the co-located database model
     colo_model = exp.create_model("sim", sim_settings)
@@ -125,9 +125,9 @@ def launch_coDB(cfg, nodelist, nNodes):
             ml_settings.set_hostlist(hosts)
             ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
             if (cfg.train.affinity):
-                ml_settings.set_gpu_affinity_script(cfg.train.affinity,
-                                                    cfg.run_args.mlprocs_pn,
-                                                    cfg.run_args.simprocs_pn)
+                ml_settings.set_gpu_affinity_script(cfg.train.affinity)
+                                                    #cfg.run_args.mlprocs_pn,
+                                                    #cfg.run_args.simprocs_pn)
 
         ml_model = exp.create_model("train_model", ml_settings)
         print("Launching training script ... ")
