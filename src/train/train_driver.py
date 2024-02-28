@@ -136,19 +136,14 @@ def main(cfg: DictConfig):
         else:
             print(f"[{comm.rank}]: no XPU devices available, xpu.device_count={torch.xpu.device_count()}")
             sys.stdout.flush()
-
-    # Initializa DDP model
-    print("before DDP wrap")
-    sys.stdout.flush()
-    if (cfg.distributed=='ddp'):
-        model = DDP(model)
-    print("after DDP wrap")
-    sys.stdout.flush()
-    
     if (cfg.device != 'cpu'):
         model.to(device)
         if (cfg.model=='quadconv'):
             mesh_nodes = mesh_nodes.to(device)
+
+    # Initializa DDP model
+    if (cfg.distributed=='ddp'):
+        model = DDP(model)
 
     # Train model
     if cfg.online.db_launch:
