@@ -20,7 +20,7 @@ set(TORCH_LIBS ${TORCH_LIBS} ${IPEX_LIB})
 include_directories(SYSTEM ${INTEL_EXTENSION_FOR_PYTORCH_PATH}/include)
 endif(USE_XPU)
 
-add_executable(inference_torch_sycl inference_torch_sycl.cpp)
+add_executable(inference_torch_sycl inference_torch_sycl_copy.cpp)
 target_link_libraries(inference_torch_sycl ${TORCH_LIBS})
 
 set_property(TARGET inference_torch_sycl PROPERTY CXX_STANDARD 17)
