@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+cmake_policy(SET CMP0074 NEW)
 project(inference_torch_sycl_example)
 
 option(USE_CUDA "Running with CUDA backend for Torch" OFF)
