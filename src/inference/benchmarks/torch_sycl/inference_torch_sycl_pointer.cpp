@@ -98,9 +98,9 @@ int main(int argc, const char* argv[])
   // Pre-allocate the output array on device and fill with ones
   float *d_outputs = sycl::malloc_device<float>(OUTPUTS_SIZE, Q);
   Q.submit([&](sycl::handler &cgh) {
-      cgh.parallel_for(OUTPUTS_SIZE, [=](sycl::id<1> idx) {
-                        d_outputs[idx] = 1.2345;
-      });
+    cgh.parallel_for(OUTPUTS_SIZE, [=](sycl::id<1> idx) {
+      d_outputs[idx] = 1.2345;
+    });
   });
   Q.wait();
 
@@ -119,24 +119,6 @@ int main(int argc, const char* argv[])
   assert(input_tensor.dtype() == torch::kFloat32);
   assert(input_tensor.device().type() == device);
   std::cout << "Converted input data to Torch tensor on " << device_str << " device \n\n";
-
-  // Convert output array to Torch tensor
-  torch::Tensor output_tensor;
-#ifdef USE_CUDA
-  output_tensor = torch::from_blob(d_outputs, {N_SAMPLES,N_OUTPUTS}, options); // XPU devices not supported yet for this function
-#elif USE_XPU
-  output_tensor = at::from_blob(d_outputs, {N_SAMPLES,N_INPUTS}, nullptr, at::device(device).dtype(torch::kFloat32), device).to(device);
-#endif
-  assert(output_tensor.dtype() == torch::kFloat32);
-  assert(output_tensor.device().type() == device);
-  std::cout << "Converted output data to Torch tensor on " << device_str << " device \n";
-  for (int i=0; i<5; i++) {
-    for (int j=0; j<N_OUTPUTS; j++) {
-      std::cout << output_tensor[i][j].item() << " ";
-    }
-    std::cout << "\n";
-  }
-  std::cout << "\n";
 
   // Run inference in a loop and time it
   torch::NoGradGuard no_grad; // equivalent to "with torch.no_grad():" in PyTorch
@@ -167,8 +149,10 @@ int main(int argc, const char* argv[])
   std::cout << "\n";
 
   // Copy the output Torch tensor to the SYCL pointer
-  output_tensor.copy_(output); // this fills in d_outputs bc zero-copy with output_tensor
-  
+  auto output_tensor_ptr = output.contiguous().data_ptr();
+  Q.memcpy((void *) d_outputs, (void *) output_tensor_ptr, OUTPUTS_SIZE*sizeof(float)); 
+  Q.wait();
+
   // Copy the SYCL array to CPU for printing
   float outputs[OUTPUTS_SIZE];
   Q.memcpy((void *) outputs, (void *) d_outputs, OUTPUTS_SIZE*sizeof(float)); 
