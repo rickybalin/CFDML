@@ -116,10 +116,6 @@ def main(cfg: DictConfig):
         print(f"\nRunning on device: {cfg.device} \n")
         sys.stdout.flush()
 
-    # Initializa DDP model
-    #if (cfg.distributed=='ddp'):
-    #    model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
-
     # Train model
     if cfg.online.db_launch:
         model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
@@ -137,14 +133,12 @@ def main(cfg: DictConfig):
         print("Saved model to disk\n")
         sys.stdout.flush()
 
-    
     # Collect timing statistics
     if (t_data.i_train>0):
         if (comm.rank==0):
             print("\nTiming data (excluding first epoch):")
             sys.stdout.flush()
         t_data.printTimeData(cfg, comm)
- 
 
     # Exit
     if (comm.rank == 0):
