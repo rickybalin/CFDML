@@ -51,7 +51,7 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, n
     else:
         data = np.array[[0]]
 
-    return model, data    
+    return model, data 
 
 
 

@@ -5,11 +5,8 @@
 #####
 import sys
 from time import perf_counter
-import numpy as np
-import math as m
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 try:
     from torch.cuda.amp import autocast, GradScaler
@@ -193,6 +190,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
+    
+    # Broadcast state if using Horovod
     if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)

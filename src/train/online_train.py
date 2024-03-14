@@ -9,7 +9,6 @@ from time import sleep,perf_counter
 import numpy as np
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
@@ -18,6 +17,8 @@ try:
     from torch.xpu.amp import autocast, GradScaler
 except:
     pass
+
+from torch.nn.parallel import DistributedDataParallel as DDP
 try:
     import horovod.torch as hvd
 except:
@@ -264,6 +265,10 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         scaler = None
         mixed_dtype = None
  
+    # Initializa DDP model
+    if (cfg.distributed=='ddp'):
+        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
@@ -274,11 +279,15 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
+    
+    # Broadcast state if using Horovod
     if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
         optimizer = hvd.DistributedOptimizer(optimizer,
-                              named_parameters=model.named_parameters(),op=hvd.mpi_ops.Sum)
+                                             named_parameters=model.named_parameters(),
+                                             op=hvd.mpi_ops.Sum,
+                                             num_groups=1)
 
     # Create training and validation Datasets based on list of simulation ranks per DB
     tot_db_tensors = client.num_db_tensors*client.nfilters
@@ -339,21 +348,21 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             t_data.t_meta = t_data.t_meta + rtime
             t_data.i_meta = t_data.i_meta + 1
             if (tmp[0] < 0.5):
-                if (rank == 0):
+                if (comm.rank == 0):
                     print("Simulation says time to quit ... \n")
                     sys.stdout.flush()
                 iTest = False
                 rerun_check = 0
                 break
 
-        # check to see if the time step number has been sent to database, if not cycle
+        # Get time step number from database
         rtime = perf_counter()
         tmp = client.client.get_tensor('step')
         rtime = perf_counter() - rtime
         t_data.t_meta = t_data.t_meta + rtime
         t_data.i_meta = t_data.i_meta + 1
 
-        # new data is available in database
+        # If time step number differs, new data is available in database
         if (istep != tmp[0]): 
             istep = tmp[0]
             if (comm.rank == 0):
@@ -365,7 +374,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         if (comm.rank == 0):
             print(f"\n Epoch {iepoch} of {cfg.epochs}")
             print("-------------------------------")
-            print(datetime.now())
             sys.stdout.flush()
         
         # Call training function
