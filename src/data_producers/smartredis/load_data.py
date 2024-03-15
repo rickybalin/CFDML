@@ -1,4 +1,5 @@
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
+from math import pi as PI
 from time import perf_counter, sleep
 from typing import Tuple
 import numpy as np
@@ -82,7 +83,7 @@ class SmartRedisClient:
     # Check if should keep running
     def check_run(self) -> bool:
         arr = self.client.get_tensor('check-run')
-        if (arr[0]==1):
+        if (arr[0]==0):
             return True
         else:
             return False
@@ -98,7 +99,7 @@ class SmartRedisClient:
         self.t_train += toc - tic
 
     # Send time step
-    def send_snapshot(self, step: int):
+    def send_step(self, step: int):
         if (self.rank%self.ppn == 0):
             step_arr = np.array([step, step], dtype=np.int64)
             tic = perf_counter()
@@ -109,18 +110,37 @@ class SmartRedisClient:
     # Collect time data
     def collect_time_data(self, comm):
         stats = np.array([self.t_init, self.t_meta, self.t_train])
-        summ = comm.comm.allreduce(np.array(var),op=comm.sum)
-        avg = summ / comm.size
-        tmp = np.array((var - avg)**2) 
-        std = comm.comm.allreduce(tmp,op=comm.sum)
-        std = std / comm.size
-        std = math.sqrt(std)
-        min_loc = comm.comm.allreduce((var,comm.rank),op=comm.minloc)
-        max_loc = comm.comm.allreduce((var,comm.rank),op=comm.maxloc)
+        summ = comm.allreduce(np.array(stats))
+        avg = summ / comm.Get_size()
+        tmp = np.power((stats - avg),2)
+        std = comm.allreduce(tmp)
+        std = std / comm.Get_size()
+        std = np.sqrt(std)
+        #min_loc = comm.allreduce((stats,comm.Get_rank()),op=MPI.MINLOC)
+        #max_loc = comm.allreduce((stats,comm.Get_rank()),op=MPI.MAXLOC)
 
-def generate_training_data(args) -> Tuple[np.ndarray, dict]:
+# Generate training data for each model
+def generate_training_data(args, rank: int) -> Tuple[np.ndarray, dict]:
     """Generate training data for each model
     """
+    random_seed = 12345 + 1000*rank
+    rng = np.random.default_rng(seed=random_seed)
+    # For the SGS model (MLP), train versions of y=sin(x)
+    if (args.model=="sgs"):
+        if (args.problem_size=="small"):
+            n_samples = 64
+            ndIn = 1
+            ndTot = 2
+            x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
+            y = np.sin(x)
+            data = np.vstack((x,y)).T
+
+    return_dict = {
+        "n_samples": n_samples,
+        "n_dim_in": ndIn,
+        "n_dim_tot": ndTot
+    }
+    return data, return_dict
 
 def main():
     """Emulate a data producing simulation for online training with SmartSim/SmartRedis
@@ -147,15 +167,15 @@ def main():
     if (rank==0 and args.logging=="verbose"):
         print(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")
     if (rank==0):
-        print(f'\nRunning with {args.dbnodes} DB nodes', flush=True)
+        print(f'\nRunning with {args.db_nodes} DB nodes', flush=True)
         print(f'and with {args.ppn} processes per node \n', flush=True)
 
     # Initialize SmartRedis clients
-    client = SmartRedisClient()
+    client = SmartRedisClient(args, rank, size)
     client.init_client(comm)
 
     # Generate synthetic data for the specific model
-    train_array, stats = generate_training_data(args)
+    train_array, stats = generate_training_data(args, rank)
 
     # Send training metadata
     client.setup(comm, stats["n_samples"], 
@@ -168,7 +188,10 @@ def main():
         sleep(2)
 
         # First off check if ML is done training, if so exit from loop
-        if (client.check_run()): break
+        if (client.check_run()): 
+            if (rank==0):
+                print("ML says time to stop running", flush=True)
+            break
 
         # Send training data to database
         client.send_snapshot(train_array)

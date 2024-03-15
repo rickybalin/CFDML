@@ -1,6 +1,6 @@
 # Database config
 database:
-    launch: False # True,False - determine whether to launch SmartSim database
+    launch: True # True,False - determine whether to launch SmartSim database
     backend: "redis" # redis,keydb - launch Redis of KeyDB database
     deployment: "colocated" # colocated,clustered - deployment of database
     port: 6780

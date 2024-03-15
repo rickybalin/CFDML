@@ -27,7 +27,8 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, n
 
     # Instantiate model
     if (cfg.model=="sgs"):
-        model  = anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
+        model  = anisoSGS(inputs=cfg.sgs.inputs, outputs=cfg.sgs.outputs,
+                          numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
     elif (cfg.model=="quadconv"):
         model = QuadConv(cfg, client, t_data)
         if (comm.rank==0):
