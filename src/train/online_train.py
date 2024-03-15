@@ -313,7 +313,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         replicas = comm.size
         rank_arg = comm.rank
     train_sampler = DistributedSampler(train_dataset, num_replicas=replicas, 
-                                       rank=rank_arg, drop_last=False, shuffle=False)
+                                       rank=rank_arg, drop_last=True, shuffle=False)
     train_tensor_loader = DataLoader(train_dataset, batch_size=client.tensor_batch, 
                                      sampler=train_sampler)
     val_sampler = DistributedSampler(val_dataset, num_replicas=replicas, 

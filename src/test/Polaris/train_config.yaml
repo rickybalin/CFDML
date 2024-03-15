@@ -33,8 +33,8 @@ online:
 sgs:
     inputs: 1 # integer - number of input features to the SGS model
     outputs: 1 # integer - number of output targets to the SGS model
-    neurons: 20 # integer - number of neurons in layers for SGS model
-    layers: 3 # integer - number of hidden layers for SGS model
+    neurons: 40 # integer - number of neurons in layers for SGS model
+    layers: 5 # integer - number of hidden layers for SGS model
     comp_model_ins_outs: False # True, False - compute the model inputs and outputs from raw data
 quadconv: 
     mesh_file: "" # string - path to mesh nodes for QuadConv model (offline only)

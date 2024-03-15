@@ -17,7 +17,7 @@ TRAIN_CONFIG=$PWD
 NODES=$(cat $PBS_NODEFILE | wc -l)
 SIM_PROCS_PER_NODE=8
 SIM_RANKS=$((NODES * SIM_PROCS_PER_NODE))
-ML_PROCS_PER_NODE=4
+ML_PROCS_PER_NODE=2
 ML_RANKS=$((NODES * ML_PROCS_PER_NODE))
 JOBID=$(echo $PBS_JOBID | awk '{split($1,a,"."); print a[1]}')
 echo Number of nodes: $NODES
@@ -29,12 +29,6 @@ echo
 
 # Run
 SIM_ARGS="--model\=sgs --problem_size\=small --db_launch\=colocated --ppn\=${SIM_PROCS_PER_NODE}"
-#DRIVER_ARGS="sim.executable=$SIM_EXE sim.arguments=\"${SIM_ARGS}\" 
-#    train.executable=$ML_EXE train.config="./sgs_train_config.yaml" 
-#    run_args.simprocs=${SIM_RANKS} run_args.simprocs_pn=${SIM_PROCS_PER_NODE} 
-#    run_args.mlprocs=${ML_RANKS} run_args.mlprocs_pn=${ML_PROCS_PER_NODE} 
-#    train.config=${TRAIN_CONFIG}"
-#echo $DRIVER_ARGS
 python $DRIVER \
     database.network_interface=uds \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
@@ -42,4 +36,3 @@ python $DRIVER \
     run_args.simprocs=${SIM_RANKS} run_args.simprocs_pn=${SIM_PROCS_PER_NODE} \
     run_args.mlprocs=${ML_RANKS} run_args.mlprocs_pn=${ML_PROCS_PER_NODE} \
     train.config=${TRAIN_CONFIG}
-#python $DRIVER $DRIVER_ARGS

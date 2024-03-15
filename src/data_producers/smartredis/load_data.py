@@ -14,9 +14,13 @@ class SmartRedisClient:
         self.db_nodes = args.db_nodes
         self.rank = rank
         self.ppn = args.ppn
-        self.t_init = 0.
-        self.t_meta = 0.
-        self.t_train = 0.
+        self.times = {
+            "init": 0.,
+            "tot_meta": 0.,
+            "tot_train": 0.,
+            "train": []
+        }
+        self.time_stats = {}
 
         if (self.db_launch == "colocated"):
             self.db_nodes = 1
@@ -35,7 +39,7 @@ class SmartRedisClient:
             tic = perf_counter()
             self.client = Client(cluster=True)
             toc = perf_counter()
-        self.t_init = toc-tic
+        self.times["init"] = toc - tic
         comm.Barrier()
         if (self.rank==0):
             print('All SmartRedis clients initialized \n', flush=True)
@@ -48,7 +52,7 @@ class SmartRedisClient:
             tic = perf_counter()
             self.client.put_tensor('check-run', arr)
             toc = perf_counter()
-            self.t_meta += toc - tic
+            self.times["tot_meta"] += toc - tic
 
             # Training data setup
             dataSizeInfo = np.empty((6,), dtype=np.int64)
@@ -61,20 +65,13 @@ class SmartRedisClient:
             tic = perf_counter()
             self.client.put_tensor('sizeInfo', dataSizeInfo)
             toc = perf_counter()
-            self.t_meta += toc - tic
+            self.times["tot_meta"] += toc - tic
 
             # Write check-run
             tic = perf_counter()
             self.client.put_tensor('tensor-ow', arr)
             toc = perf_counter()
-            self.t_meta += toc - tic
-
-            # Time step number
-            step = np.array([0, 0], dtype=np.int64)
-            tic = perf_counter()
-            self.client.put_tensor('step', step)
-            toc = perf_counter()
-            self.t_meta += toc - tic
+            self.times["tot_meta"] += toc - tic
 
         comm.Barrier()
         if (self.rank==0):
@@ -82,21 +79,25 @@ class SmartRedisClient:
 
     # Check if should keep running
     def check_run(self) -> bool:
+        tic = perf_counter()
         arr = self.client.get_tensor('check-run')
+        toc = perf_counter()
+        self.times["tot_meta"] += toc - tic
         if (arr[0]==0):
             return True
         else:
             return False
         
     # Send training snapshot
-    def send_snapshot(self, array: np.ndarray):
-        key = 'y.'+str(self.rank)+'.'+str(step)
+    def send_snapshot(self, array: np.ndarray, step: int):
+        key = 'y.'+str(self.rank) #+'.'+str(step)
         if (self.rank==0):
             print(f'Sending training data with key {key} and shape {array.shape}')
         tic = perf_counter()
         self.client.put_tensor(key, array)
         toc = perf_counter()
-        self.t_train += toc - tic
+        self.times["tot_train"] += toc - tic
+        self.times["train"].append(toc - tic)
 
     # Send time step
     def send_step(self, step: int):
@@ -105,19 +106,43 @@ class SmartRedisClient:
             tic = perf_counter()
             self.client.put_tensor('step', step_arr)
             toc = perf_counter()
-            self.t_meta += toc - tic
+            self.times["tot_meta"] += toc - tic
 
-    # Collect time data
-    def collect_time_data(self, comm):
-        stats = np.array([self.t_init, self.t_meta, self.t_train])
-        summ = comm.allreduce(np.array(stats))
-        avg = summ / comm.Get_size()
-        tmp = np.power((stats - avg),2)
-        std = comm.allreduce(tmp)
-        std = std / comm.Get_size()
-        std = np.sqrt(std)
-        #min_loc = comm.allreduce((stats,comm.Get_rank()),op=MPI.MINLOC)
-        #max_loc = comm.allreduce((stats,comm.Get_rank()),op=MPI.MAXLOC)
+    # Collect timing statistics across ranks
+    def collect_stats(self, comm, mpi_ops):
+        """Collect timing statistics across ranks with MPI
+        """
+        for _, (key, val) in enumerate(self.times.items()):
+            summ = comm.allreduce(np.array(val), op=mpi_ops["sum"])
+            avg = summ / comm.Get_size()
+            tmp = np.power(np.array(val - avg),2)
+            std = comm.allreduce(tmp, op=mpi_ops["sum"])
+            std = std / comm.Get_size()
+            std = np.sqrt(std)
+            min_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["min"])
+            max_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["max"])
+            stats = {
+                "avg": avg,
+                "std": std,
+                "sum": summ,
+                "min": [min_loc[0],min_loc[1]],
+                "max": [max_loc[0],max_loc[1]]
+            }
+            self.time_stats[key] = stats
+
+    # Print timing statistics
+    def print_stats(self):
+        """Print timing statistics
+        """
+        for _, (key, val) in enumerate(self.time_stats.items()):
+            print(key,val)
+            #stats_string = f": min = {val["min"][0]:>8e} , " + \
+            #               f"max = {val["max"][0]:>8e} , " + \
+            #               f"avg = {val["avg"]:>8e} , " + \
+            #               f"std = {val["std"]:>8e}, " + \
+            #               f"sum = {val["sum"]:>8e}"
+            #print(f"SmartRedis {key} [s] " + stats_string)
+
 
 # Generate training data for each model
 def generate_training_data(args, rank: int) -> Tuple[np.ndarray, dict]:
@@ -128,7 +153,7 @@ def generate_training_data(args, rank: int) -> Tuple[np.ndarray, dict]:
     # For the SGS model (MLP), train versions of y=sin(x)
     if (args.model=="sgs"):
         if (args.problem_size=="small"):
-            n_samples = 64
+            n_samples = 512
             ndIn = 1
             ndTot = 2
             x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
@@ -194,7 +219,7 @@ def main():
             break
 
         # Send training data to database
-        client.send_snapshot(train_array)
+        client.send_snapshot(train_array, step)
         comm.Barrier()
         if (rank==0):
             print(f'All ranks finished sending training data', flush=True)
@@ -207,7 +232,15 @@ def main():
     # Accumulate timing data and print summary
     if (rank==0):
         print("Summary of timing data:", flush=True)
-    client.collect_time_data(comm)
+    mpi_ops = {
+        "sum": MPI.SUM,
+        "min": MPI.MINLOC,
+        "max": MPI.MAXLOC
+    }
+    client.collect_stats(comm, mpi_ops)
+    if (rank==0):
+        client.print_stats()
+
 
 
 if __name__ == "__main__":
