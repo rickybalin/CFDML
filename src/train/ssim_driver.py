@@ -79,7 +79,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                 **kwargs
                 )
     else:
-        colo_model.colocate_db_tpc(
+        colo_model.colocate_db_tcp(
                 port=PORT,
                 ifname=cfg.database.network_interface,
                 db_cpus=cfg.run_args.dbprocs_pn,

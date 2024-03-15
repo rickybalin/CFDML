@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from math import pi as PI
 from time import perf_counter, sleep
-from typing import Tuple
+from typing import Tuple, Optional
 import numpy as np
 
 from smartredis import Client
@@ -113,14 +113,23 @@ class SmartRedisClient:
         """Collect timing statistics across ranks with MPI
         """
         for _, (key, val) in enumerate(self.times.items()):
-            summ = comm.allreduce(np.array(val), op=mpi_ops["sum"])
-            avg = summ / comm.Get_size()
-            tmp = np.power(np.array(val - avg),2)
-            std = comm.allreduce(tmp, op=mpi_ops["sum"])
-            std = std / comm.Get_size()
-            std = np.sqrt(std)
-            min_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["min"])
-            max_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["max"])
+            if (key=="train"):
+                collected_arr = np.zeros((len(val)*comm.Get_size()))
+                comm.Gather(np.array(val),collected_arr,root=0)
+                avg = np.mean(collected_arr)
+                std = np.std(collected_arr)
+                min = np.amin(collected_arr); min_loc = [min, 0]
+                max = np.amax(collected_arr); max_loc = [max, 0]
+                summ = np.sum(collected_arr)
+            else:
+                summ = comm.allreduce(np.array(val), op=mpi_ops["sum"])
+                avg = summ / comm.Get_size()
+                tmp = np.power(np.array(val - avg),2)
+                std = comm.allreduce(tmp, op=mpi_ops["sum"])
+                std = std / comm.Get_size()
+                std = np.sqrt(std)
+                min_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["min"])
+                max_loc = comm.allreduce((val,comm.Get_rank()), op=mpi_ops["max"])
             stats = {
                 "avg": avg,
                 "std": std,
@@ -135,20 +144,19 @@ class SmartRedisClient:
         """Print timing statistics
         """
         for _, (key, val) in enumerate(self.time_stats.items()):
-            print(key,val)
-            #stats_string = f": min = {val["min"][0]:>8e} , " + \
-            #               f"max = {val["max"][0]:>8e} , " + \
-            #               f"avg = {val["avg"]:>8e} , " + \
-            #               f"std = {val["std"]:>8e}, " + \
-            #               f"sum = {val["sum"]:>8e}"
-            #print(f"SmartRedis {key} [s] " + stats_string)
+            stats_string = f": min = {val['min'][0]:>8e} , " + \
+                           f"max = {val['max'][0]:>8e} , " + \
+                           f"avg = {val['avg']:>8e} , " + \
+                           f"std = {val['std']:>8e} "
+                           #f"sum = {val["sum"]:>8e}"
+            print(f"SmartRedis {key} [s] " + stats_string)
 
 
 # Generate training data for each model
-def generate_training_data(args, rank: int) -> Tuple[np.ndarray, dict]:
+def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np.ndarray, dict]:
     """Generate training data for each model
     """
-    random_seed = 12345 + 1000*rank
+    random_seed = 12345 + 1000*rank + 100*step
     rng = np.random.default_rng(seed=random_seed)
     # For the SGS model (MLP), train versions of y=sin(x)
     if (args.model=="sgs"):
@@ -157,7 +165,7 @@ def generate_training_data(args, rank: int) -> Tuple[np.ndarray, dict]:
             ndIn = 1
             ndTot = 2
             x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
-            y = np.sin(x)
+            y = np.sin(x)+0.1*np.sin(4*PI*x)
             data = np.vstack((x,y)).T
 
     return_dict = {
@@ -186,6 +194,7 @@ def main():
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
+    parser.add_argument('--reproducibility', default='False', help='Send a single array for reproducible results')
     args = parser.parse_args()
 
     rankl = rank % args.ppn
@@ -209,14 +218,16 @@ def main():
     # Emulate integration of PDEs with a do loop
     numts = 1000
     for step in range(numts):
-        # Sleep for a few seconds to emulate the time required by PDE integration
-        sleep(2)
-
         # First off check if ML is done training, if so exit from loop
         if (client.check_run()): 
             if (rank==0):
                 print("ML says time to stop running", flush=True)
             break
+
+        # Sleep for a few seconds to emulate the time required by PDE integration
+        sleep(1)
+        if not args.reproducibility:
+            train_array, _ = generate_training_data(args, rank, step)
 
         # Send training data to database
         client.send_snapshot(train_array, step)
