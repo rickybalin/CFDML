@@ -14,7 +14,7 @@ epochs: 100 # integer - max number of epochs for training
 mini_batch: 32 # integer - mini batch size for SGD update
 learning_rate: 0.001 # float - serial leranring rate
 tolerance: 1.0e-4 # float - convergence tolerance of validation loss
-validation_split: 0.20 # float - percentage of data kept for validation
+validation_split: 0.25 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
 scheduler: "None" # None,Plateau - optimizer scheduler to be used
 precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training
@@ -25,7 +25,8 @@ save_db: False # True, False - save database contents at the end of trainint to 
 # Online train config
 online:
     db_launch: "" # colocated,clustered - deployment method of SmartSim database
-    batch: 0 # integer - number of tensors to grab from database at once, 0: grab all tensors at once, recommended
+    global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
+    batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
     db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
  

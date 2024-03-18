@@ -23,8 +23,8 @@ except:
 from utils import metric_average
 
 ### Train the model
-def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
-                  epoch, t_data, cfg):
+def train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
+          epoch, t_data, cfg):
     model.train()
     num_batches = len(train_loader)
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
@@ -64,27 +64,17 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
             if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%10==0):
                 print(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
                       f'[{batch_idx+1}/{num_batches}] | ' + \
-                      f'Loss: {loss.item():>8e}')
-                sys.stdout.flush()
+                      f'Loss: {loss.item():>8e}', flush=True)
 
-    # Accumulate loss
     running_loss = running_loss.item() / num_batches
-    print(f"[{comm.rank}]: running loss = {running_loss:>8e}")
-    sys.stdout.flush()
-    comm.comm.Barrier()
-    loss_avg = metric_average(comm, running_loss)
-    if comm.rank == 0: 
-        print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e}")
-        sys.stdout.flush()
-
-    return loss_avg, t_data
+    return running_loss, t_data
 
 ### ================================================ ###
 ### ================================================ ###
 ### ================================================ ###
 
 ### Validate the model
-def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
+def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
     model.eval()
     num_batches = len(val_loader)
@@ -114,23 +104,59 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
                 sys.stdout.flush()
 
-    # Accumulate accuracy measures
     running_acc = running_acc.item() / num_batches
-    acc_avg = metric_average(comm, running_acc)
     running_loss = running_loss.item() / num_batches
-    loss_avg = metric_average(comm, running_loss)
-    if comm.rank == 0:
-        print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
-        sys.stdout.flush()
 
     if (cfg.model=='sgs'):
-        valData = data[:,6:]
+        valData = data[:,:cfg.sgs.inputs]
     else:
         valData = data
 
-    return acc_avg, loss_avg, valData
+    return running_acc, running_loss, valData
 
-        
+### ================================================ ###
+### ================================================ ###
+### ================================================ ###
+
+### Test the model
+def test(comm, model, test_loader, mixed_dtype, cfg):
+
+    model.eval()
+    num_batches = len(test_loader)
+    running_acc = torch.tensor([0.0],device=torch.device(cfg.device))
+    running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
+
+    # Loop over batches, which in this case are the tensors to grab from database
+    with torch.no_grad():
+        for batch_idx, data in enumerate(test_loader):
+            # Offload batch data
+            if (cfg.device != 'cpu'):
+                data = data.to(cfg.device)
+
+            # Perform forward pass
+            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                if (cfg.distributed=='horovod'):
+                    acc, loss = model.test_step(data, return_loss=True)
+                elif (cfg.distributed=='ddp'):
+                    acc, loss = model.module.test_step(data, return_loss=True)
+            running_acc += acc
+            running_loss += loss
+                
+            # Print data for some ranks only
+            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
+                print(f'{comm.rank}: Testing | ' + \
+                        f'[{batch_idx+1}/{num_batches}] | ' + \
+                        f'Accuracy: {acc.cpu().tolist()} | Loss {loss.item():>8e}', flush=True)
+
+    running_acc = running_acc.cpu().numpy() / num_batches
+    running_loss = running_loss.item() / num_batches
+
+    if (cfg.model=='sgs'):
+        testData = data[:,:cfg.sgs.inputs]
+    else:
+        testData = data
+
+    return running_acc, running_loss, testData
 
 ### ================================================ ###
 ### ================================================ ###
@@ -201,51 +227,60 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
                                              num_groups=1)
 
     # Loop over epochs
-    for ep in range(cfg.epochs):
+    for epoch in range(cfg.epochs):
         tic_l = perf_counter()
         if (comm.rank == 0):
-            print(f"\n Epoch {ep+1} of {cfg.epochs}")
+            print(f"\n Epoch {epoch+1} of {cfg.epochs}")
             print("-------------------------------")
             sys.stdout.flush()
 
         # Train
         if train_sampler:
-            train_sampler.set_epoch(ep)
+            train_sampler.set_epoch(epoch)
         tic_t = perf_counter()
-        global_loss, t_data = offline_train(comm, model, train_loader, 
-                                            optimizer, scaler, mixed_dtype,
-                                            ep, t_data, cfg)
+        loss, t_data = train(comm, model, train_loader, 
+                             optimizer, scaler, mixed_dtype,
+                             epoch, t_data, cfg)
+        global_loss = metric_average(comm, loss)
         toc_t = perf_counter()
+        if comm.rank == 0: 
+            print(f"Training set: | Epoch: {epoch+1} | Average loss: {global_loss:>8e}", flush=True)
+        if (epoch>0):
+            t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
+            t_data.i_train = t_data.i_train + 1
 
         # Validate
         if (val_loader is not None):
             tic_v = perf_counter()
-            global_acc, global_val_loss, valData = offline_validate(comm, model, 
-                                                                val_loader, 
-                                                                mixed_dtype, ep, cfg)
+            val_acc, val_loss, valData = validate(comm, model, 
+                                                  val_loader, 
+                                                  mixed_dtype, epoch, cfg)
+            global_val_acc = metric_average(comm, val_acc)
+            global_val_loss = metric_average(comm, val_loss)
             toc_v = perf_counter()
-            if (ep>0):
+            if comm.rank == 0:
+                print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")
+            if (epoch>0):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
         else:
             global_val_loss = global_loss
             if (cfg.model=='sgs'):
-                valData = data[cfg.mini_batch,6:].to(cfg.device)
+                valData = data[cfg.mini_batch,:cfg.sgs.n_dim_in].to(cfg.device)
             else:
                 valData = data.to(cfg.device)
 
         # Apply scheduler
         if (cfg.scheduler == "Plateau"):
             scheduler.step(global_val_loss)
-
-        toc_l = perf_counter()
-        if (ep>0):
-            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
-            t_data.t_train = t_data.t_train + (toc_t - tic_t)
-            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
-            t_data.i_train = t_data.i_train + 1
         
+        # Time entire loop
+        toc_l = perf_counter()
+        if (epoch>0):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
+
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.tolerance):
             if (comm.rank == 0):
@@ -253,7 +288,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             break
         
         # Check if max number of epochs is reached
-        if (ep >= cfg.epochs):
+        if (epoch >= cfg.epochs-1):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             break

@@ -9,7 +9,7 @@ TRAIN_CONFIG=$PWD
 
 # Set up run
 SIM_RANKS=4
-ML_RANKS=2
+ML_RANKS=1
 echo Number of simulation total ranks: $SIM_RANKS
 echo Number of ML total ranks: $ML_RANKS
 echo

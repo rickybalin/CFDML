@@ -6,6 +6,7 @@
 
 from typing import Optional, Tuple
 from omegaconf import DictConfig
+from time import perf_counter
 import numpy as np
 import math as m
 from numpy import linalg as la
@@ -19,7 +20,7 @@ try:
 except:
     pass
 
-from datasets import OfflineDataset
+from datasets import OfflineDataset, MiniBatchDataset
 
 
 class anisoSGS(nn.Module): 
@@ -111,7 +112,7 @@ class anisoSGS(nn.Module):
         if return_loss:
             loss = self.loss_fn(prediction, target)
         else:
-            loss = 0.
+            loss = torch.Tensor([0.])
         return acc, loss
     
     def create_data(self, cfg: DictConfig, rng) -> np.ndarray:
@@ -226,8 +227,26 @@ class anisoSGS(nn.Module):
                 'samples': nVal
             }
         }
+    
+    def online_dataloader(self, cfg, client, keys: list, rank: int, shuffle: Optional[bool] = False) \
+                        -> Tuple[torch.utils.data.DataLoader, float]:
+        """
+        Load data from database and create on-rank data loader
+        """
+        if (cfg.logging=='debug'):
+            print(f'[{rank}]: Grabbing tensors with key {keys}', flush=True)
+        rtime = perf_counter()
+        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
+                                    for key in keys], dim=0)
+        rtime = perf_counter() - rtime
+        data_loader = DataLoader(MiniBatchDataset(concat_tensor), 
+                                 shuffle=shuffle, batch_size=cfg.mini_batch)
+        return data_loader, rtime
 
     def save_checkpoint(self, fname: str, data: torch.Tensor):
+        """
+        Save model checkpoint
+        """
         torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
         module = torch.jit.trace(self, data)
         torch.jit.save(module, f"{fname}_jit.pt")
