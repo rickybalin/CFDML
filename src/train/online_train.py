@@ -176,12 +176,12 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         for _, tensor_keys in enumerate(train_tensor_loader):
             if (cfg.online.global_shuffling or update):
                 if (cfg.distributed=='horovod'):
-                    train_loader, rtime = model.online_dataloader(cfg, client, 
-                                                                  tensor_keys, comm.rank,
+                    train_loader, rtime = model.online_dataloader(cfg, client, comm, 
+                                                                  tensor_keys,
                                                                   shuffle=True)
                 elif (cfg.distributed=='ddp'):
-                    train_loader, rtime = model.module.online_dataloader(cfg, client, 
-                                                                         tensor_keys, comm.rank,
+                    train_loader, rtime = model.module.online_dataloader(cfg, client, comm,
+                                                                         tensor_keys,
                                                                          shuffle=True)
                 if (iepoch>0):
                     t_data.t_getBatch = t_data.t_getBatch + rtime
@@ -212,11 +212,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             for _, tensor_keys in enumerate(val_tensor_loader):
                 if (cfg.online.global_shuffling or update):
                     if (cfg.distributed=='horovod'):
-                        val_loader, rtime = model.online_dataloader(cfg, client, 
-                                                                    tensor_keys, comm.rank)
+                        val_loader, rtime = model.online_dataloader(cfg, client, comm, tensor_keys)
                     elif (cfg.distributed=='ddp'):
-                        val_loader, rtime = model.module.online_dataloader(cfg, client, 
-                                                                           tensor_keys, comm.rank)
+                        val_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
                     if (iepoch>0):
                         t_data.t_getBatch_v = t_data.t_getBatch_v + rtime
                         t_data.i_getBatch_v = t_data.i_getBatch_v + 1
@@ -285,11 +283,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         running_acc = 0.
         for _, tensor_keys in enumerate(test_tensor_loader):
             if (cfg.distributed=='horovod'):
-                test_loader, rtime = model.online_dataloader(cfg, client, 
-                                                             tensor_keys, comm.rank)
+                test_loader, rtime = model.online_dataloader(cfg, client, comm, tensor_keys)
             elif (cfg.distributed=='ddp'):
-                test_loader, rtime = model.module.online_dataloader(cfg, client, 
-                                                                    tensor_keys, comm.rank)
+                test_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
             running_acc, running_loss, testData = test(comm, model, test_loader, 
                                                        mixed_dtype, cfg)
             running_loss += running_loss

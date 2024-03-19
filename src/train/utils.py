@@ -31,6 +31,8 @@ class MPI_COMM:
         self.name = MPI.Get_processor_name()
         self.rankl = self.rank % (cfg.ppn*cfg.ppd)
         self.sum = MPI.SUM
+        self.min = MPI.MIN
+        self.max = MPI.MAX
         self.minloc = MPI.MINLOC
         self.maxloc = MPI.MAXLOC
         if print_hello:

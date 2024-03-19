@@ -40,6 +40,11 @@ class anisoSGS(nn.Module):
         self.ndOut = outputDim
         self.nNeurons = numNeurons
         self.nLayers = numLayers
+        self.min_val = np.zeros((self.ndOut,))
+        self.max_val = np.ones((self.ndOut,))
+        self.scaler_fit = False
+
+        # Define model network
         self.net = nn.ModuleList()
         self.net.append(nn.Linear(self.ndIn, self.nNeurons)) # input layer
         self.net.append(nn.LeakyReLU(0.3))
@@ -157,15 +162,14 @@ class anisoSGS(nn.Module):
             data = np.hstack((features,targets))
 
         # Scale the outputs to [0,1] range
-        if (np.amin(data[:,self.ndIn]) < 0 or np.amax(data[:,self.ndIn]) > 1):
-            with open(cfg.name+"_scaling.dat", "w") as fh:
-                for i in range(6):
-                    ind = self.ndIn+i
-                    min_val = np.amin(data[:,ind])
-                    max_val = np.amax(data[:,ind])
-                    fh.write(f"{min_val:>8e} {max_val:>8e}\n")
-                    data[:,ind] = (data[:,ind] - min_val)/(max_val - min_val)
-
+        if (np.amin(data[:,self.ndIn:]) < 0 or np.amax(data[:,self.ndIn:]) > 1):
+            self.scaler_fit = True
+            for i in range(self.ndOut):
+                ind = self.ndIn+i
+                self.min_val[i] = np.amin(data[:,ind])
+                self.max_val[i] = np.amax(data[:,ind])
+                data[:,ind] = (data[:,ind] - self.min_val[i]) / \
+                              (self.max_val[i] - self.min_val[i])
         return data
     
     def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
@@ -228,28 +232,61 @@ class anisoSGS(nn.Module):
             }
         }
     
-    def online_dataloader(self, cfg, client, keys: list, rank: int, shuffle: Optional[bool] = False) \
+    def online_scaler(self, comm, client, data: torch.Tensor) -> torch.Tensor:
+        """
+        Perform the min-max scaling on the model outputs when online training
+        """
+        # Compute scaler and send to DB
+        if not self.scaler_fit:
+            self.scaler_fit = True
+            local_mins = torch.amin(data[:,self.ndIn:], 0)
+            local_maxs = torch.amax(data[:,self.ndIn:], 0)
+            if (comm.size>1):
+                global_mins = comm.comm.allreduce(local_mins, op=comm.min)
+                self.min_val = global_mins.numpy()
+                global_maxs = comm.comm.allreduce(local_maxs, op=comm.min)
+                self.max_val = global_maxs.numpy()
+            else:
+                self.min_val = local_mins.numpy()
+                self.max_val = local_maxs.numpy()
+            if (comm.rank==client.head_rank):
+                client.client.put_tensor("min_val",)
+
+        # Apply scaler
+        for i in range(self.ndOut):
+            ind = self.ndIn+i
+            data[:,ind] = (data[:,ind] - self.min_val[i]) / \
+                          (self.max_val[i] - self.min_val[i])
+        return data
+
+    def online_dataloader(self, cfg, client, comm, keys: list, shuffle: Optional[bool] = False) \
                         -> Tuple[torch.utils.data.DataLoader, float]:
         """
         Load data from database and create on-rank data loader
         """
         if (cfg.logging=='debug'):
-            print(f'[{rank}]: Grabbing tensors with key {keys}', flush=True)
+            print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
         rtime = perf_counter()
         concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
                                     for key in keys], dim=0)
         rtime = perf_counter() - rtime
+        concat_tensor = self.online_scaler(comm, client, concat_tensor)
         data_loader = DataLoader(MiniBatchDataset(concat_tensor), 
                                  shuffle=shuffle, batch_size=cfg.mini_batch)
         return data_loader, rtime
 
     def save_checkpoint(self, fname: str, data: torch.Tensor):
         """
-        Save model checkpoint
+        Save model checkpoint and min-max scaling
         """
         torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
         module = torch.jit.trace(self, data)
         torch.jit.save(module, f"{fname}_jit.pt")
+
+        if self.scaler_fit:
+            with open(f"{fname}_scaling.dat", "w") as fh:
+                for i in range(self.ndOut):
+                    fh.write(f"{self.min_val[i]:>8e} {self.max_val[i]:>8e}\n")
 
     def comp_ins_outs_SGS(self, polydata, alignment="vorticity"):
         """
