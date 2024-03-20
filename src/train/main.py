@@ -10,9 +10,6 @@ import datetime
 
 # Import ML libraries
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
 
 # Import required functions
 from online_train import onlineTrainLoop
@@ -49,7 +46,7 @@ def main(cfg: DictConfig):
     elif (cfg.distributed=='ddp'):
         import socket
         import torch.distributed as dist
-        from torch.nn.parallel import DistributedDataParallel as DDP
+        #from torch.nn.parallel import DistributedDataParallel as DDP
         os.environ['RANK'] = str(comm.rank)
         os.environ['WORLD_SIZE'] = str(comm.size)
         master_addr = socket.gethostname() if comm.rank == 0 else None
@@ -67,7 +64,7 @@ def main(cfg: DictConfig):
                                 timeout=datetime.timedelta(seconds=120))
 
     # Set all seeds if need reproducibility
-    if cfg.repeatability:
+    if cfg.reproducibility:
         random_seed = 123456789
         random.seed(a=random_seed)
         np.random.seed(random_seed)
@@ -86,35 +83,17 @@ def main(cfg: DictConfig):
     t_data = timeStats()
 
     # Initialize SmartRedis client and gather metadata
+    client = None
     if cfg.online.db_launch:
         client = ssim_utils.SmartRedisClient()
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
         client.read_overwrite(comm, t_data)
-        #client.read_filters(cfg, t_data)
-        mesh_nodes = client.read_mesh(cfg, comm, t_data)
 
-    # Load data from file if not launching database
-    if not cfg.online.db_launch:
-        data, mesh_nodes = utils.load_data(cfg, rng)
-        comm.comm.Barrier()
-        if (comm.rank == 0):
-            print("\nLoaded training data \n")
-
-    # Instantiate the NN model 
-    if (cfg.model=="sgs"):
-        model = models.anisoSGS(numNeurons=cfg.sgs.neurons, numLayers=cfg.sgs.layers)
-    elif (cfg.model=="quadconv"):
-        mesh_nodes = torch.from_numpy(mesh_nodes)
-        model = models.QuadConv(comm.rank, mesh_nodes, cfg.quadconv.quadconv_config, cfg.quadconv.channels)
-    n_params = utils.count_weights(model)
-    if (comm.rank == 0):
-        print(f"\nLoaded model with {n_params} trainable parameters \n")
-
+    # Instantiate the model and get the training data
+    model, data = models.load_model(cfg, comm, client, rng, t_data)
+    
     # Set device to run on and offload model
-    if (comm.rank == 0):
-        print(f"\nRunning on device: {cfg.device} \n")
-        sys.stdout.flush()
     device = torch.device(cfg.device)
     torch.set_num_threads(1)
     if (cfg.device == 'cuda'):
@@ -129,16 +108,17 @@ def main(cfg: DictConfig):
             sys.stdout.flush()
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
-            xpu_id = comm.rankl//cfg.ppd
+            xpu_id = comm.rankl//cfg.ppd if torch.xpu.device_count()>1 else 0
+            assert xpu_id>=0 and xpu_id<torch.xpu.device_count(), \
+                   f"Assert failed: xpu_id={xpu_id} and {torch.xpu.device_count()} available devices"
             torch.xpu.set_device(xpu_id)
+        else:
+            print(f"[{comm.rank}]: no XPU devices available, xpu.device_count={torch.xpu.device_count()}", flush=True)
     if (cfg.device != 'cpu'):
         model.to(device)
-        if (cfg.model=='quadconv'):
-            mesh_nodes = mesh_nodes.to(device)
-
-    # Initializa DDP model
-    if (cfg.distributed=='ddp'):
-        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+    if (comm.rank == 0):
+        print(f"\nRunning on device: {cfg.device} \n")
+        sys.stdout.flush()
 
     # Train model
     if cfg.online.db_launch:
@@ -151,34 +131,18 @@ def main(cfg: DictConfig):
         model = model.module
         dist.destroy_process_group()
     if (comm.rank == 0):
-        torch.save(model.state_dict(), f"{cfg.name}.pt", _use_new_zipfile_serialization=False)
         model.eval()
-        if (cfg.model=="sgs"):
-            module = torch.jit.trace(model, testData)
-            torch.jit.save(module, f"{cfg.name}_jit.pt")
-        elif (cfg.model=="quadconv"):
-            encoder = models.quadconvEncoder(model.encoder, model.mesh)
-            decoder = models.quadconvDecoder(model.decoder, model.mesh, model.output_activation)
-            dummy_latent = encoder(testData).detach()
-            predicted = decoder(dummy_latent).detach()
-            module_encode = torch.jit.trace(encoder, testData)
-            torch.jit.save(module_encode, f"{cfg.name}_encoder_jit.pt")
-            dummy_latent = module_encode(testData).detach()
-            module_decode = torch.jit.trace(decoder, dummy_latent)
-            torch.jit.save(module_decode, f"{cfg.name}_decoder_jit.pt")
-            predicted = module_decode(dummy_latent).detach()
-
+        model.save_checkpoint(cfg.name, testData)
         print("")
         print("Saved model to disk\n")
         sys.stdout.flush()
 
-    
     # Collect timing statistics
-    if (comm.rank==0):
-        print("\nTiming data:")
-        sys.stdout.flush()
-    t_data.printTimeData(cfg, comm)
- 
+    if (t_data.i_train>0):
+        if (comm.rank==0):
+            print("\nTiming data (excluding first epoch):")
+            sys.stdout.flush()
+        t_data.printTimeData(cfg, comm)
 
     # Exit
     if (comm.rank == 0):

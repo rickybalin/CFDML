@@ -24,6 +24,8 @@ class SmartRedisClient:
 
     # Initializa client
     def init(self, cfg, comm, t_data):
+        """Initialize the SmartRedis client
+        """
         try:
             from smartredis import Client
         except ModuleNotFoundError as err:
@@ -39,8 +41,7 @@ class SmartRedisClient:
 
         # Initialize Redis clients on each rank #####
         if (comm.rank == 0):
-            print("\nInitializing Python clients ...")
-            sys.stdout.flush()
+            print("\nInitializing Python clients ...", flush=True)
         if (cfg.online.db_nodes==1):
             rtime = perf_counter()
             sys.stdout.flush()
@@ -56,8 +57,7 @@ class SmartRedisClient:
             t_data.i_init = t_data.i_init + 1
         comm.comm.Barrier()
         if (comm.rank == 0):
-            print("All done\n")
-            sys.stdout.flush()
+            print("All done\n", flush=True)
 
     # Read the address of the co-located database
     def read_SSDB(self, prefix, comm):
@@ -107,9 +107,13 @@ class SmartRedisClient:
         self.head_rank = dataSizeInfo[5]
         
         max_batch_size = int(self.num_db_tensors/(cfg.ppn*cfg.ppd))
-        self.tensor_batch = cfg.online.batch
-        if (cfg.online.batch==0 or self.tensor_batch>max_batch_size): 
-            self.tensor_batch =  max(1,max_batch_size)
+        if (not cfg.online.global_shuffling):
+            self.tensor_batch = max_batch_size
+        else:
+            if (cfg.online.batch==0 or cfg.online.batch>max_batch_size):
+                self.tensor_batch = max_batch_size
+            else:
+                self.tensor_batch = cfg.online.batch
 
         if (comm.rank == 0):
             print(f"Samples per simulation tensor: {self.npts}")
@@ -151,16 +155,3 @@ class SmartRedisClient:
                     break
             self.nfilters = filters.size
     
-    # Read the mesh nodes
-    def read_mesh(self, cfg, comm, t_data):
-        mesh_nodes = None
-        if (cfg.model=='quadconv'):
-            rtime = perf_counter()
-            mesh_nodes = self.client.get_tensor('mesh').astype('float32')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1 
-            comm.comm.Barrier()
-            if (comm.comm.rank==0): 
-                print(f"Loaded mesh for QCNN model with size {mesh_nodes.shape}")
-        return mesh_nodes
