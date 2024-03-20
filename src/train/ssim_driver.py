@@ -33,16 +33,22 @@ def launch_coDB(cfg, nodelist, nNodes):
 
     # Set the run settings, including the client executable and how to run it
     client_exe = cfg.sim.executable
+    extension = client_exe.split(".")[-1]
+    if extension=="py":
+        exe_args = client_exe
+        client_exe = "python"
+    else:
+        exe_args = None
     if (cfg.database.launcher=='local'):
         sim_settings = RunSettings(client_exe,
-                           exe_args=None,
+                           exe_args=exe_args,
                            run_command='mpirun',
                            run_args={"-n" : cfg.run_args.simprocs},
                            env_vars=None)
     elif (cfg.database.launcher=='pbs'):
         sim_settings = PalsMpiexecSettings(
                            client_exe,
-                           run_args=None,
+                           exe_args=exe_args,
                            env_vars={'MPICH_OFI_CXI_PID_BASE':str(0)})
         sim_settings.set_tasks(cfg.run_args.simprocs)
         sim_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
@@ -73,7 +79,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                 **kwargs
                 )
     else:
-        colo_model.colocate_db_tpc(
+        colo_model.colocate_db_tcp(
                 port=PORT,
                 ifname=cfg.database.network_interface,
                 db_cpus=cfg.run_args.dbprocs_pn,

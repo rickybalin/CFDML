@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
+cmake_policy(SET CMP0074 NEW)
 project(inference_torch_sycl_example)
 
 option(USE_CUDA "Running with CUDA backend for Torch" OFF)
@@ -19,7 +20,14 @@ set(TORCH_LIBS ${TORCH_LIBS} ${IPEX_LIB})
 include_directories(SYSTEM ${INTEL_EXTENSION_FOR_PYTORCH_PATH}/include)
 endif(USE_XPU)
 
-add_executable(inference_torch_sycl inference_torch_sycl.cpp)
-target_link_libraries(inference_torch_sycl ${TORCH_LIBS})
+add_executable(inference_torch_sycl_cpy inference_torch_sycl_copy.cpp)
+add_executable(inference_torch_sycl_ptr inference_torch_sycl_pointer.cpp)
+add_executable(test_zero_copy test_zero_copy.cpp)
 
-set_property(TARGET inference_torch_sycl PROPERTY CXX_STANDARD 17)
+target_link_libraries(inference_torch_sycl_cpy ${TORCH_LIBS})
+target_link_libraries(inference_torch_sycl_ptr ${TORCH_LIBS})
+target_link_libraries(test_zero_copy ${TORCH_LIBS})
+
+set_property(TARGET inference_torch_sycl_cpy PROPERTY CXX_STANDARD 17)
+set_property(TARGET inference_torch_sycl_ptr PROPERTY CXX_STANDARD 17)
+set_property(TARGET test_zero_copy PROPERTY CXX_STANDARD 17)

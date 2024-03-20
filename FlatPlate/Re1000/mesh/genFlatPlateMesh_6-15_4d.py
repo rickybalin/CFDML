@@ -24,8 +24,9 @@ zmin = 0; zmax = 0.452
 Lz = zmax-zmin
 
 #%% Define grid spacing
-nz = 284 # this creates 283 elements
+nz = 100 # this creates 283 elements
 dz = 6*lvisc
+zmax = 5*dz
 z = np.linspace(zmin,zmax-dz,nz)
 
 dx = 15*lvisc
@@ -49,17 +50,20 @@ numnp = nx*ny*nz # total number of points in the mesh
 print(f"Generating a mesh with (nx,ny,nz) = ({nx},{ny},{nz})\n")
 
 ## Load in the initial condition to attach to the mesh
-print("Loading the IC ...")
-nx_ic = min(nx+1,777)  # total is 777
+#print("Loading the IC ...")
+#nx_ic = min(nx+1,777)  # total is 777
+#ny_ic = 191
+#nz_ic = 284
+#numnp_ic = nx_ic*ny_ic*nz_ic
+#IC = np.load('IC.npy') # NB: this is a solution from 4xdelta domain
+#print("Done\n")
+nx_ic = nx
 ny_ic = 191
-nz_ic = 284
-numnp_ic = nx_ic*ny_ic*nz_ic
-IC = np.load('IC.npy') # NB: this is a solution from 4xdelta domain
-print("Done\n")
+nz_ic = nz
 
 #%% Write node coordinates and other mesh data structures to file
 print("Looping over mesh vertices ...")
-fname = 'FlatPlate_CRS_6-15_4d'
+fname = '/tmp/FlatPlate_CRS_6-15_4d'
 f0 = open(fname+'.stats', 'w')
 f0.write('%d %d %d %d\n' % (nx, ny, nz, numnp))
 f1 = open(fname+'.crd.0', 'w') # contains coordinates of mesh points
@@ -101,10 +105,11 @@ for i in range(nx):
             # write the 2D node number of each node
             f4.write('%d\n' % (inode2D))
             # write the initial condition
-            z_index = k%nz_ic
-            inode_ic = min(i,nx_ic-1)*ny_ic*nz_ic + j*nz_ic + z_index
-            f6.write('%.12e %.12e %.12e %.12e\n' % (IC[inode_ic,0],
-                      IC[inode_ic,1],IC[inode_ic,2],IC[inode_ic,3]))
+            #z_index = k%nz_ic
+            #inode_ic = min(i,nx_ic-1)*ny_ic*nz_ic + j*nz_ic + z_index
+            #f6.write('%.12e %.12e %.12e %.12e\n' % (IC[inode_ic,0],
+            #          IC[inode_ic,1],IC[inode_ic,2],IC[inode_ic,3]))
+            f6.write('%.12e %.12e %.12e %.12e\n' % (1.0,0.,0.,0.))
             
 f1.close()
 f2.close()

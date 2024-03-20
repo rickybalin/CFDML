@@ -5,30 +5,26 @@
 #####
 import sys
 from time import perf_counter
-import numpy as np
-import math as m
 
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import random_split, DataLoader
-from torch.utils.data.distributed import DistributedSampler
 try:
     from torch.cuda.amp import autocast, GradScaler
     from torch.xpu.amp import autocast, GradScaler
 except:
     pass
+
+from torch.nn.parallel import DistributedDataParallel as DDP
 try:
     import horovod.torch as hvd
 except:
     pass
 
 from utils import metric_average
-from datasets import OfflineDataset
 
 ### Train the model
-def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
-                  epoch, t_data, cfg):
+def train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
+          epoch, t_data, cfg):
     model.train()
     num_batches = len(train_loader)
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
@@ -55,7 +51,7 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
                 loss.backward()
                 optimizer.step()
             rtime = perf_counter() - rtime
-            if (epoch>1):
+            if (epoch>0):
                 t_data.t_compMiniBatch = t_data.t_compMiniBatch + rtime
                 t_data.i_compMiniBatch = t_data.i_compMiniBatch + 1 
                 fact = float(1.0/t_data.i_compMiniBatch)
@@ -68,26 +64,17 @@ def offline_train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
             if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%10==0):
                 print(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
                       f'[{batch_idx+1}/{num_batches}] | ' + \
-                      f'Loss: {loss.item():>8e}')
-                sys.stdout.flush()
+                      f'Loss: {loss.item():>8e}', flush=True)
 
-    # Accumulate loss
     running_loss = running_loss.item() / num_batches
-    sys.stdout.flush()
-    comm.comm.Barrier()
-    loss_avg = metric_average(comm, running_loss)
-    if comm.rank == 0: 
-        print(f"Training set: | Epoch: {epoch+1} | Average loss: {loss_avg:>8e}")
-        sys.stdout.flush()
-
-    return loss_avg, t_data
+    return running_loss, t_data
 
 ### ================================================ ###
 ### ================================================ ###
 ### ================================================ ###
 
 ### Validate the model
-def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
+def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
     model.eval()
     num_batches = len(val_loader)
@@ -104,9 +91,9 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
             # Perform forward pass
             with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
                 if (cfg.distributed=='horovod'):
-                    acc, loss = model.validation_step(data, return_loss=True)
+                    acc, loss = model.validation_step(data)
                 elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.validation_step(data, return_loss=True)
+                    acc, loss = model.module.validation_step(data)
             running_acc += acc
             running_loss += loss
                 
@@ -117,23 +104,59 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
                 sys.stdout.flush()
 
-    # Accumulate accuracy measures
     running_acc = running_acc.item() / num_batches
-    acc_avg = metric_average(comm, running_acc)
     running_loss = running_loss.item() / num_batches
-    loss_avg = metric_average(comm, running_loss)
-    if comm.rank == 0:
-        print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {acc_avg:>8e} | Average Loss: {loss_avg:>8e}")
-        sys.stdout.flush()
 
     if (cfg.model=='sgs'):
-        valData = data[:,6:]
+        valData = data[:,:cfg.sgs.inputs]
     else:
         valData = data
 
-    return acc_avg, loss_avg, valData
+    return running_acc, running_loss, valData
 
-        
+### ================================================ ###
+### ================================================ ###
+### ================================================ ###
+
+### Test the model
+def test(comm, model, test_loader, mixed_dtype, cfg):
+
+    model.eval()
+    num_batches = len(test_loader)
+    running_acc = torch.tensor([0.0],device=torch.device(cfg.device))
+    running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
+
+    # Loop over batches, which in this case are the tensors to grab from database
+    with torch.no_grad():
+        for batch_idx, data in enumerate(test_loader):
+            # Offload batch data
+            if (cfg.device != 'cpu'):
+                data = data.to(cfg.device)
+
+            # Perform forward pass
+            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+                if (cfg.distributed=='horovod'):
+                    acc, loss = model.test_step(data, return_loss=True)
+                elif (cfg.distributed=='ddp'):
+                    acc, loss = model.module.test_step(data, return_loss=True)
+            running_acc += acc
+            running_loss += loss
+                
+            # Print data for some ranks only
+            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
+                print(f'{comm.rank}: Testing | ' + \
+                        f'[{batch_idx+1}/{num_batches}] | ' + \
+                        f'Accuracy: {acc.cpu().tolist()} | Loss {loss.item():>8e}', flush=True)
+
+    running_acc = running_acc.cpu().numpy() / num_batches
+    running_loss = running_loss.item() / num_batches
+
+    if (cfg.model=='sgs'):
+        testData = data[:,:cfg.sgs.inputs]
+    else:
+        testData = data
+
+    return running_acc, running_loss, testData
 
 ### ================================================ ###
 ### ================================================ ###
@@ -141,6 +164,9 @@ def offline_validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
 ### Main online training loop driver
 def offlineTrainLoop(cfg, comm, t_data, model, data):
+    """
+    Set up and execute the loop over epochs for offline learning
+    """
     # Set precision of model and data
     if (cfg.precision == "fp32" or cfg.precision == "tf32"):
         model.float()
@@ -168,39 +194,19 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     #if (cfg.device != 'cpu'):
     #    data = data.to(cfg.device)
 
-    # Split data and create datasets
-    samples = data.shape[0]
-    nVal = m.floor(samples*cfg.validation_split)
-    nTrain = samples-nVal
-    if (nVal==0 and cfg.validation_split>0):
-        if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
-    dataset = OfflineDataset(data)
-    trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
+    # Prepare training and validation data loaders
+    loaders = model.setup_dataloaders(data, cfg, comm)
+    train_loader = loaders["train"]["loader"]
+    train_sampler = loaders["train"]["sampler"]
+    nTrain = loaders["train"]["samples"]
+    val_loader = loaders["validation"]["loader"]
+    nVal = loaders["validation"]["samples"]
+    
+    # Initializa DDP model
+    if (cfg.distributed=='ddp'):
+        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
-    # Data loader
-    # Try:
-    # - pin_memory=True - should be faster for GPU training
-    # - num_workers > 1 - enables multi-process data loading 
-    # - prefetch_factor >1 - enables pre-fetching of data
-    if (cfg.data_path == "synthetic"):
-        train_sampler = None
-        val_sampler = None
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                      shuffle=True, drop_last=True) 
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
-                                    drop_last=True)
-    else:
-        # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
-        train_sampler = DistributedSampler(trainDataset, num_replicas=comm.size, rank=comm.rank,
-                                           shuffle=True, drop_last=True)
-        val_sampler = DistributedSampler(valDataset, num_replicas=comm.size, rank=comm.rank,
-                                         drop_last=True)  
-        train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                  sampler=train_sampler)
-        val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
-                                sampler=val_sampler)
-
-    # Initialize optimizer
+    # Initialize optimizer and scheduler
     if (cfg.optimizer == "Adam"):
         optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate*comm.size)
     elif (cfg.optimizer == "RAdam"):
@@ -210,6 +216,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
+    
+    # Broadcast state if using Horovod
     if (cfg.distributed=='horovod'):
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
@@ -219,51 +227,60 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
                                              num_groups=1)
 
     # Loop over epochs
-    for ep in range(cfg.epochs):
+    for epoch in range(cfg.epochs):
         tic_l = perf_counter()
         if (comm.rank == 0):
-            print(f"\n Epoch {ep+1} of {cfg.epochs}")
+            print(f"\n Epoch {epoch+1} of {cfg.epochs}")
             print("-------------------------------")
             sys.stdout.flush()
 
         # Train
         if train_sampler:
-            train_sampler.set_epoch(ep)
+            train_sampler.set_epoch(epoch)
         tic_t = perf_counter()
-        global_loss, t_data = offline_train(comm, model, train_dataloader, 
-                                            optimizer, scaler, mixed_dtype,
-                                            ep, t_data, cfg)
+        loss, t_data = train(comm, model, train_loader, 
+                             optimizer, scaler, mixed_dtype,
+                             epoch, t_data, cfg)
+        global_loss = metric_average(comm, loss)
         toc_t = perf_counter()
+        if comm.rank == 0: 
+            print(f"Training set: | Epoch: {epoch+1} | Average loss: {global_loss:>8e}", flush=True)
+        if (epoch>0):
+            t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
+            t_data.i_train = t_data.i_train + 1
 
         # Validate
-        if (nVal==0):
-            global_val_loss = global_loss
-            if (cfg.model=='sgs'):
-                valData = data[cfg.mini_batch,6:].to(cfg.device)
-            else:
-                valData = data.to(cfg.device)
-        else:
+        if (val_loader is not None):
             tic_v = perf_counter()
-            global_acc, global_val_loss, valData = offline_validate(comm, model, 
-                                                                val_dataloader, 
-                                                                mixed_dtype, ep, cfg)
+            val_acc, val_loss, valData = validate(comm, model, 
+                                                  val_loader, 
+                                                  mixed_dtype, epoch, cfg)
+            global_val_acc = metric_average(comm, val_acc)
+            global_val_loss = metric_average(comm, val_loss)
             toc_v = perf_counter()
-            if (ep>1):
+            if comm.rank == 0:
+                print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")
+            if (epoch>0):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
+        else:
+            global_val_loss = global_loss
+            if (cfg.model=='sgs'):
+                valData = data[cfg.mini_batch,:cfg.sgs.inputs].to(cfg.device)
+            else:
+                valData = data.to(cfg.device)
 
         # Apply scheduler
         if (cfg.scheduler == "Plateau"):
             scheduler.step(global_val_loss)
-
-        toc_l = perf_counter()
-        if (ep>1):
-            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
-            t_data.t_train = t_data.t_train + (toc_t - tic_t)
-            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
-            t_data.i_train = t_data.i_train + 1
         
+        # Time entire loop
+        toc_l = perf_counter()
+        if (epoch>0):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
+
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.tolerance):
             if (comm.rank == 0):
@@ -271,7 +288,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             break
         
         # Check if max number of epochs is reached
-        if (ep >= cfg.epochs):
+        if (epoch >= cfg.epochs-1):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n")
             break

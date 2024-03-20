@@ -1,36 +1,31 @@
-#Experiment configuration file.
+# QuadConv model configuration file
+_spatial_dim: &spatial_dim 2
+_num_points: &num_points 2189
+_out0: &out0 2500
+_out1: &out1 625
+_latent_dim: &latent_dim 50
 
-_spatial_dim: &spatial_dim 3
-_num_points: &num_points 44121
-_out0: &out0 19456
-_out1: &out1 2432
-_out2: &out2 304
-_latent_dim: &latent_dim 100
-_ratio: &ratio [1,19,2]
-
-#Model arguments
-module: "pool"
+# Model arguments
+module: "pool" #str <skip|pool>_coder
 spatial_dim: *spatial_dim #int
 latent_dim: *latent_dim #int
-point_seq: [*num_points, *out0, *out1] #[int]
+point_seq: [*num_points, *out0] #[int]
 quad_map: "param_quad" #str <function in quadrature.py>
-quad_args:
-  ratio: *ratio
-stages: 2 #int
-loss_fn: "MSELoss" #str, loss from torch.nn
-optimizer: "Adam" #str, optimizer from torch.optim
-learning_rate: 0.01 #float
-output_activation: "Tanh" # str, activation from torch.nn (Identity, Tanh)
+quad_args: {} #dict
+stages: 1 #int
+output_activation: "Tanh" #str, <activation in torch.nn>
+internal_activation: "ReLU" #str, <activation in torch.nn>, CELU, GELU, ReLU
+loss_fn: "RRELoss" #str, <loss in torch_compression.loss|loss in torch.nn>
+noise_scale: 0.0 #float
+load_mesh_weights: [True]
 
 conv_params:
-  in_points: [*num_points, *out0, *out1] #list[int]
-  out_points: [*out0, *out1, *out2] #list[int]
-  in_channels: [4, 16, 16] #list[int]
-  out_channels: [16, 16, 16] #list[int]
-  bias: [True] #[bool]
-  filter_seq: [[16, 32, 32, 16]] #[[int]]
+  in_points: [*num_points, *out0] #list[int]
+  out_points: [*out0, *out1] #list[int]
+  in_channels: [4, 16] #list[int]
+  out_channels: [16, 16] #list[int]
+  bias: [False] #[bool]
+  filter_seq: [[16, 16, 16]] #[[int]]
   filter_mode: [single] #[string] <single|share_in|nested>
-  decay_param: [1.e+7, 5.e+7, 5.e+7, 5.e+6, 5.e+6] #[float]
-
-block_args:
-  ratio: *ratio
+  decay_param: [null] #[float]
+  verbose: [False]

@@ -118,20 +118,15 @@ To train this model offline or online:
   * Set the number of channels. The default is 4, which assumes 3 velocity components and pressure
   * Set the path to the config file for the QuadConv model and the QCNN layers. An example of this config script can be found [here](src/train/conf/quadconv_config.yaml)
 
+### Distributed Graph Neural Network (GNN) for Surrogate Modeling
+
 
 ## Build and Run Instructions
-### ALCF Polaris
-On the Polaris system at ALCF, SmartSim and SmartRedis can be installed running the [build script](Polaris/build_SSIM_Polaris.sh) from an interactive node with
-```sh
-source build_SSIM_Polaris.sh
-```
-Note that this script creates a new conda enviroment which does not contain all the modules available with the base env from the conda/2022-09-08 module on Polaris, however it contains many of the essential packages, such as PyTorch, TensorFlow, Horovod, and MPI4PY.
-Integration of SmartSim and SmartRedis within the provided data science modules available on the system is coming soon.
+### ALCF Systems
+Instructions for building the run environment for CFDML and SmartSim/SmartRedis are available for [Polaris](Polaris).
+Instructions for Aurora are coming soon.
 
-### ALCF Aurora
-Information is upcoming, check back soon.
-
-### Other systems
+### Other Systems
 General information on how to run SmartSim and SmartRedis on other systems is found [here](https://www.craylabs.org/docs/installation_instructions/platform.html).
 
 
