@@ -242,15 +242,17 @@ class anisoSGS(nn.Module):
             local_mins = torch.amin(data[:,self.ndIn:], 0)
             local_maxs = torch.amax(data[:,self.ndIn:], 0)
             if (comm.size>1):
-                global_mins = comm.comm.allreduce(local_mins, op=comm.min)
+                local_maxs = torch.div(1., local_maxs)
+                tmp_local = torch.vstack((local_mins, local_maxs))
+                tmp_global = torch.zeros_like(tmp_local)
+                comm.comm.Allreduce(tmp_local, tmp_global, op=comm.min)
+                global_mins = tmp_global[0]
+                global_maxs = torch.div(1,tmp_global[1])
                 self.min_val = global_mins.numpy()
-                global_maxs = comm.comm.allreduce(local_maxs, op=comm.min)
                 self.max_val = global_maxs.numpy()
             else:
                 self.min_val = local_mins.numpy()
                 self.max_val = local_maxs.numpy()
-            if (comm.rank==client.head_rank):
-                client.client.put_tensor("min_val",)
 
         # Apply scaler
         for i in range(self.ndOut):

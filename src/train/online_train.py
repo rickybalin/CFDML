@@ -29,9 +29,12 @@ from offline_train import train, validate, test
 from datasets import MiniBatchDataset, KeyDataset
 
 # Generate training and validation data loaders for DB interaction
-def setup_online_dataloaders(cfg, comm, dataset, batch_size, split, generator):
+def setup_online_dataloaders(cfg, comm, dataset, batch_size, split):
+    # Split tensors for trianing and validation
+    # random generator is needed to ensure same split across ranks
+    generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
-    
+ 
     if (cfg.online.db_launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
@@ -56,7 +59,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     iepoch = 0 # epoch number
     rerun_check = 1 # 0 means quit training
 
-    # Set precision of model and data
+    # Set precision of model
     if (cfg.precision == "fp32" or cfg.precision == "tf32"): model.float()
     elif (cfg.precision == "fp64"): model.double()
     elif (cfg.precision == "fp16"): model.half()
@@ -108,7 +111,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     #                            client.head_rank,client.filters)
     #else:
     key_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
-    generator_split = torch.Generator().manual_seed(123456789) if cfg.reproducibility else None
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
@@ -160,7 +162,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             train_tensor_loader, \
                 train_sampler, \
                 val_tensor_loader = setup_online_dataloaders(cfg, comm, key_dataset, client.tensor_batch, 
-                                                             tensor_split, generator_split)
+                                                             tensor_split)
         else:
             update = False
         
@@ -276,7 +278,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         # Create dataset, samples and loader for the test data
         test_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
         test_tensor_loader, test_sampler, _ = setup_online_dataloaders(cfg, comm, test_dataset, client.tensor_batch, 
-                                                                       [len(sim_rank_list), 0], generator_split)
+                                                                       [len(sim_rank_list), 0])
 
         # Call testing function
         running_loss = 0.

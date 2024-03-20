@@ -268,7 +268,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         else:
             global_val_loss = global_loss
             if (cfg.model=='sgs'):
-                valData = data[cfg.mini_batch,:cfg.sgs.n_dim_in].to(cfg.device)
+                valData = data[cfg.mini_batch,:cfg.sgs.inputs].to(cfg.device)
             else:
                 valData = data.to(cfg.device)
 

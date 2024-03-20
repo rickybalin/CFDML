@@ -111,7 +111,6 @@ def main(cfg: DictConfig):
             xpu_id = comm.rankl//cfg.ppd if torch.xpu.device_count()>1 else 0
             assert xpu_id>=0 and xpu_id<torch.xpu.device_count(), \
                    f"Assert failed: xpu_id={xpu_id} and {torch.xpu.device_count()} available devices"
-            xpu_id = comm.rankl//cfg.ppd
             torch.xpu.set_device(xpu_id)
         else:
             print(f"[{comm.rank}]: no XPU devices available, xpu.device_count={torch.xpu.device_count()}", flush=True)

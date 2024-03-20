@@ -14,8 +14,7 @@ def main():
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     rank = comm.Get_rank()
-    print(f"Hello from MPI rank {rank}/{size}")
-    sys.stdout.flush()
+    print(f"Hello from MPI rank {rank}/{size}", flush=True)
 
     # Intel imports
     try:
@@ -44,12 +43,16 @@ def main():
                             init_method='env://',
                             timeout=datetime.timedelta(seconds=120))
 
+    # Perform an allreduce with torch.distributed
+    tensor = torch.ones(10,10).to('xpu')
+    tensor_reduced = dist.all_reduce(tensor)
+    print(f'[{rank}]: past torch.distributed.all_reduce', flush=True)
+    
     # Get model and wrap with DDP
     model = torchvision.models.resnet50()
     model.to('xpu')
     model = DDP(model)
-    print(f'[{rank}]: past DDP wrapper')
-    sys.stdout.flush()
+    print(f'[{rank}]: past DDP wrapper', flush=True)
 
     # Distroy DDP process group
     dist.destroy_process_group()
