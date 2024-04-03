@@ -276,13 +276,13 @@ class anisoSGS(nn.Module):
         concat_tensor = self.online_scaler(comm, client, concat_tensor)
 
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
-            concat_data = torch.tensor(concat_data, dtype=torch.float32)
+            concat_tensor = torch.tensor(concat_tensor, dtype=torch.float32)
         elif (cfg.precision == "fp64"):
-            concat_data = torch.tensor(concat_data, dtype=torch.float64)
+            concat_tensor = torch.tensor(concat_tensor, dtype=torch.float64)
         elif (cfg.precision == "fp16"):
-            concat_data = torch.tensor(concat_data, dtype=torch.float16)
+            concat_tensor = torch.tensor(concat_tensor, dtype=torch.float16)
         elif (cfg.precision == "bf16"):
-            concat_data = torch.tensor(concat_data, dtype=torch.bfloat16)
+            concat_tensor = torch.tensor(concat_tensor, dtype=torch.bfloat16)
 
         data_loader = DataLoader(MiniBatchDataset(concat_tensor), 
                                  shuffle=shuffle, batch_size=cfg.mini_batch)
