@@ -8,7 +8,8 @@
 #include "sycl/sycl.hpp"
 #include <unistd.h>
 
-const int N_SAMPLES = 2048;
+//const int N_SAMPLES = 262144;
+const int N_SAMPLES = 524288;
 const int N_INPUTS = 6;
 const int N_OUTPUTS = 6;
 const int INPUTS_SIZE = N_SAMPLES*N_INPUTS;
@@ -104,54 +105,47 @@ int main(int argc, const char* argv[])
   });
   Q.wait();
 
-  // Convert input array to Torch tensor
-  // NOTE: the pointer to the input data must reside on same device as
-  //       the specified Torch device
+  // Loop 50 times for statistics
+  int niter = 100;
+  std::vector<std::chrono::milliseconds::rep> times;
+  torch::Tensor output;
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
-  torch::Tensor input_tensor;
-#ifdef USE_CUDA
-  input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options); // XPU devices not supported yet for this function
-#elif USE_XPU  
-  input_tensor = at::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, nullptr, at::device(device).dtype(torch::kFloat32), device).to(device);
-#endif
-  assert(input_tensor.dtype() == torch::kFloat32);
-  assert(input_tensor.device().type() == device);
-  std::cout << "Converted input data to Torch tensor on " << device_str << " device \n\n";
-
-  // Run inference in a loop and time it
   torch::NoGradGuard no_grad; // equivalent to "with torch.no_grad():" in PyTorch
-  int niter = 50;
-  torch::Tensor output;
-  std::vector<std::chrono::milliseconds::rep> times;
+  auto tic_l = std::chrono::high_resolution_clock::now();
   for (int i=0; i<niter; i++) {
-    usleep(100000); // sleep a little emulating simulation work
-
-    auto tic = std::chrono::high_resolution_clock::now();
+    // Convert input array to Torch tensor
+    torch::Tensor input_tensor;
+#ifdef USE_CUDA
+    input_tensor = torch::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, options); // XPU devices not supported yet for this function
+#elif USE_XPU  
+    input_tensor = at::from_blob(d_inputs, {N_SAMPLES,N_INPUTS}, nullptr, at::device(device).dtype(torch::kFloat32), device).to(device);
+#endif
+   
+    // Run inference and time it
+    auto tic_i = std::chrono::high_resolution_clock::now();
     output = model.forward({input_tensor}).toTensor();
-    auto toc = std::chrono::high_resolution_clock::now();
-    auto time = std::chrono::duration_cast<std::chrono::milliseconds>(toc - tic).count();
-    times.push_back(time);
+    auto toc_i = std::chrono::high_resolution_clock::now();
+    
+    // Copy the output Torch tensor to the SYCL pointer
+    auto output_tensor_ptr = output.contiguous().data_ptr();
+    Q.memcpy((void *) d_outputs, (void *) output_tensor_ptr, OUTPUTS_SIZE*sizeof(float)); 
+    Q.wait();
+
+    auto time_i = std::chrono::duration_cast<std::chrono::milliseconds>(toc_i - tic_i).count();
+    times.push_back(time_i);
   }
-  double mean_time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+  auto toc_l = std::chrono::high_resolution_clock::now();
+  double total_loop_time = std::chrono::duration_cast<std::chrono::milliseconds>(toc_l - tic_l).count();
+  double total_inf_time = std::accumulate(times.begin(), times.end(), 0.0);
+  double mean_inf_time = total_inf_time / times.size();
+  double mean_cpy_time = (total_loop_time - total_inf_time) / double(niter);
   std::cout << "Performed inference\n";
-  printf("Mean inference time %4.2f milliseconds \n\n", mean_time);  
-
-  // Output the predicted Torch tensor
-  std::cout << "Predicted Torch tensor is : \n";
-  for (int i=0; i<5; i++) {
-    for (int j=0; j<N_OUTPUTS; j++) {
-      std::cout << output[i][j].item() << " ";
-    }
-    std::cout << "\n";
-  }
-  std::cout << "\n";
-
-  // Copy the output Torch tensor to the SYCL pointer
-  auto output_tensor_ptr = output.contiguous().data_ptr();
-  Q.memcpy((void *) d_outputs, (void *) output_tensor_ptr, OUTPUTS_SIZE*sizeof(float)); 
-  Q.wait();
+  printf("Total loop time %4.2f milliseconds \n", total_loop_time);
+  printf("Total inference time %4.2f milliseconds \n", total_inf_time);
+  printf("Mean data copy time %4.2f milliseconds \n", mean_cpy_time);
+  printf("Mean inference time %4.2f milliseconds \n\n", mean_inf_time);
 
   // Copy the SYCL array to CPU for printing
   float outputs[OUTPUTS_SIZE];
