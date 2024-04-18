@@ -99,18 +99,15 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                                              num_groups=1)
 
     # Create training and validation Datasets
-    tot_db_tensors = client.num_db_tensors*client.nfilters
-    sim_rank_list = np.arange(0,tot_db_tensors,dtype=int)
+    num_sim_ranks = client.num_db_tensors
+    num_filters = client.nfilters
+    tot_db_tensors = num_sim_ranks*num_filters
     num_val_tensors = int(tot_db_tensors*cfg.validation_split)
-    num_train_tensors = client.num_db_tensors*client.nfilters - num_val_tensors
+    num_train_tensors = tot_db_tensors - num_val_tensors
     tensor_split = [num_train_tensors, num_val_tensors]
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
-    #if (cfg.model=="sgs" and client.nfilters>1):
-    #    dataset = KeyMFDataset(sim_rank_list,client.num_db_tensors,
-    #                            client.head_rank,client.filters)
-    #else:
-    key_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
+    key_dataset = KeyDataset(num_sim_ranks, num_filters, client.head_rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
@@ -276,9 +273,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 break
 
         # Create dataset, samples and loader for the test data
-        test_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
+        test_dataset = KeyDataset(num_sim_ranks, num_filters, client.head_rank)
         test_tensor_loader, test_sampler, _ = setup_online_dataloaders(cfg, comm, test_dataset, client.tensor_batch, 
-                                                                       [len(sim_rank_list), 0])
+                                                                       [tot_db_tensors, 0])
 
         # Call testing function
         running_loss = 0.

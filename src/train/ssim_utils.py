@@ -21,15 +21,19 @@ class SmartRedisClient:
         self.tensor_batch = None
         self.nfilters = 1
         self.dataOverWr = None
+        self.rank = None
+        self.size = None
 
     # Initializa client
     def init(self, cfg, comm, t_data):
         """Initialize the SmartRedis client
         """
+        self.rank = comm.rank
+        self.size = comm.size
         try:
             from smartredis import Client
         except ModuleNotFoundError as err:
-            if comm.rank==0: print(err)
+            if self.rank==0: print(err)
 
         # Read the address of the co-located database first
         if (cfg.online.db_launch=='colocated'):
@@ -40,7 +44,7 @@ class SmartRedisClient:
             address = None
 
         # Initialize Redis clients on each rank #####
-        if (comm.rank == 0):
+        if (self.rank == 0):
             print("\nInitializing Python clients ...", flush=True)
         if (cfg.online.db_nodes==1):
             rtime = perf_counter()
@@ -56,7 +60,7 @@ class SmartRedisClient:
             t_data.t_init = t_data.t_init + rtime
             t_data.i_init = t_data.i_init + 1
         comm.comm.Barrier()
-        if (comm.rank == 0):
+        if (self.rank == 0):
             print("All done\n", flush=True)
 
     # Read the address of the co-located database
@@ -86,10 +90,9 @@ class SmartRedisClient:
         return SSDB
 
     # Read the size information from DB
-    def read_sizeInfo(self, cfg, comm, t_data):
-        if (comm.rank == 0):
-            print("\nGetting size info from DB ...")
-            sys.stdout.flush()
+    def read_sizeInfo(self, cfg, t_data):
+        if (self.rank == 0):
+            print("\nGetting setup info from DB ...", flush=True)
         while True:
             if (self.client.poll_tensor("sizeInfo",0,1)):
                 rtime = perf_counter()
@@ -106,26 +109,16 @@ class SmartRedisClient:
         self.num_db_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
         
-        max_batch_size = int(self.num_db_tensors/(cfg.ppn*cfg.ppd))
-        if (not cfg.online.global_shuffling):
-            self.tensor_batch = max_batch_size
-        else:
-            if (cfg.online.batch==0 or cfg.online.batch>max_batch_size):
-                self.tensor_batch = max_batch_size
-            else:
-                self.tensor_batch = cfg.online.batch
-
-        if (comm.rank == 0):
+        if (self.rank == 0):
             print(f"Samples per simulation tensor: {self.npts}")
             print(f"Model input features: {self.ndIn}")
             print(f"Model output targets: {self.ndOut}")
             print(f"Total tensors in all DB: {self.num_tot_tensors}")
             print(f"Tensors in local DB: {self.num_db_tensors}")
-            print(f"Simulation tensors per batch: {self.tensor_batch}")
             sys.stdout.flush()
 
     # Read the flag determining if data is overwritten in DB
-    def read_overwrite(self, comm, t_data):
+    def read_overwrite(self, t_data):
         while True:
             if (self.client.poll_tensor("tensor-ow",0,1)):
                 rtime = perf_counter()
@@ -135,23 +128,37 @@ class SmartRedisClient:
                 t_data.i_meta = t_data.i_meta + 1 
                 break
         self.dataOverWr = tmp[0]
-        if (comm.rank==0):
+        if (self.rank==0):
             if (self.dataOverWr>0.5): 
-                print("\nTraining data is overwritten in DB \n")
+                print("Training data is overwritten in DB")
             else:
-                print("Training data is accumulated in DB \n")
+                print("Training data is accumulated in DB")
             sys.stdout.flush()
 
     # Read the flag determining how many filterwidths to train on
-    def read_filters(self, cfg, t_data):
-        if (cfg.model == "sgs"):
+    def read_num_filters(self, model_name, t_data):
+        if (model_name == "sgs"):
             while True:
-                if (self.client.poll_tensor("filters",0,1)):
+                if (self.client.poll_tensor("num_filter_widths",0,1)):
                     rtime = perf_counter()
-                    filters = self.client.get_tensor('filters')
+                    self.nfilters = self.client.get_tensor('num_filter_widths')[0]
                     rtime = perf_counter() - rtime
                     t_data.t_meta = t_data.t_meta + rtime
                     t_data.i_meta = t_data.i_meta + 1 
                     break
-            self.nfilters = filters.size
+            if (self.rank==0):
+                print(f"Using {self.nfilters} filters widths for training data", flush=True)
+   
+    # Calculate the filter batch size
+    def get_batch(self, cfg):     
+        max_batch_size = int(self.num_db_tensors*self.nfilters/(cfg.ppn*cfg.ppd))
+        if (not cfg.online.global_shuffling):
+            self.tensor_batch = max_batch_size
+        else:
+            if (cfg.online.batch==0 or cfg.online.batch>max_batch_size):
+                self.tensor_batch = max_batch_size
+            else:
+                self.tensor_batch = cfg.online.batch
+        if (self.rank==0):
+            print(f"Grabbing {self.tensor_batch} simulation tensors per batch\n")
     

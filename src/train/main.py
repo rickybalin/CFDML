@@ -87,8 +87,10 @@ def main(cfg: DictConfig):
     if cfg.online.db_launch:
         client = ssim_utils.SmartRedisClient()
         client.init(cfg, comm, t_data)
-        client.read_sizeInfo(cfg, comm, t_data)
-        client.read_overwrite(comm, t_data)
+        client.read_sizeInfo(cfg, t_data)
+        client.read_overwrite(t_data)
+        client.read_num_filters(cfg.model, t_data)
+        client.get_batch(cfg)
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng, t_data)
