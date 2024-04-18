@@ -101,7 +101,7 @@ int main(int argc, const char* argv[])
   // Loop 50 times for statistics
   int niter = 100;
   std::vector<std::chrono::milliseconds::rep> times;
-  torch::Tensor output;
+  torch::Tensor output_tensor;
   auto options = torch::TensorOptions()
                     .dtype(torch::kFloat32)
                     .device(device);
@@ -118,12 +118,15 @@ int main(int argc, const char* argv[])
    
     // Run inference and time it
     auto tic_i = std::chrono::high_resolution_clock::now();
-    output = model.forward({input_tensor}).toTensor();
+    output_tensor = model.forward({input_tensor}).toTensor();
     auto toc_i = std::chrono::high_resolution_clock::now();
     
     // Copy the output Torch tensor to the SYCL pointer
-    auto output_tensor_ptr = output.contiguous().data_ptr();
-    Q.memcpy((void *) d_outputs, (void *) output_tensor_ptr, OUTPUTS_SIZE*sizeof(float)); 
+    output_tensor = output_tensor.to(torch::kCPU);
+    float* h_outputs = new float[OUTPUTS_SIZE]();
+    torch::Tensor output_tensor_h = torch::from_blob(h_outputs, {N_SAMPLES,N_OUTPUTS});
+    output_tensor_h.copy_(output_tensor);
+    Q.memcpy((void *) d_outputs, (void *) h_outputs, OUTPUTS_SIZE*sizeof(float));
     Q.wait();
 
     auto time_i = std::chrono::duration_cast<std::chrono::milliseconds>(toc_i - tic_i).count();

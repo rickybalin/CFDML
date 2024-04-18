@@ -123,7 +123,15 @@ int main(int argc, const char* argv[])
     
     // Copy the output Torch tensor to the SYCL pointer
     auto output_tensor_ptr = output.contiguous().data_ptr();
-    Q.memcpy((void *) d_outputs, (void *) output_tensor_ptr, OUTPUTS_SIZE*sizeof(float)); 
+    //sycl::buffer<double> buf_output(output_tensor_ptr, sycl::range(OUTPUTS_SIZE));
+    sycl::buffer<float> output_tensor_ptr_buf((float *)output_tensor_ptr, sycl::range(OUTPUTS_SIZE));
+    Q.submit([&](sycl::handler &cgh) {
+      sycl::accessor a_output(output_tensor_ptr_buf, cgh, sycl::read_only);
+      cgh.parallel_for(OUTPUTS_SIZE, [=](sycl::id<1> idx) {
+        float tmp = a_output[idx];
+        d_outputs[idx] = tmp;
+      });
+    });
     Q.wait();
 
     auto time_i = std::chrono::duration_cast<std::chrono::milliseconds>(toc_i - tic_i).count();
