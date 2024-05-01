@@ -51,13 +51,14 @@ def main():
         #print(f'Length of dataset: {data_set.__len__()}')
         #print(f'Item of dataset: {data_set.__getitem__(0)}')
         
-        sampler = None; shuffle = True
+        sampler = None; shuffle = True; batch_size = args.batch_size
         if sampler_name=='BatchSampler':
             #sampler = BatchSampler(SequentialSampler(data_set), batch_size=args.batch_size, drop_last=False)
             sampler = BatchSampler(RandomSampler(data_set), batch_size=args.batch_size, drop_last=False)
             shuffle = False
+            batch_size = 1
 
-        data_loader = DataLoader(data_set,shuffle=shuffle, batch_size=args.batch_size,
+        data_loader = DataLoader(data_set,shuffle=shuffle, batch_size=batch_size,
                                  sampler=sampler,
                                  #pin_memory=True,
                                  #num_workers=2,
@@ -68,7 +69,6 @@ def main():
             if args.device=='xpu': batch = batch.to(device)
         toc = perf_counter()
         print(f'DataLoader time for {dataset}: {toc-tic:>.4f} sec', flush=True)
-
 
 if __name__ == "__main__":
     main()

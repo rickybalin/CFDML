@@ -66,6 +66,7 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
                       f'[{batch_idx+1}/{num_batches}] | ' + \
                       f'Loss: {loss.item():>8e}', flush=True)
 
+    #print(comm.rank, running_loss.item(), num_batches, flush=True)
     running_loss = running_loss.item() / num_batches
     return running_loss, t_data
 
@@ -152,6 +153,7 @@ def test(comm, model, test_loader, mixed_dtype, cfg):
     running_loss = running_loss.item() / num_batches
 
     if (cfg.model=='sgs'):
+        if len(data.shape)>2: data = torch.squeeze(data)
         testData = data[:,:cfg.sgs.inputs]
     else:
         testData = data
@@ -198,6 +200,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     loaders = model.setup_dataloaders(data, cfg, comm)
     train_loader = loaders["train"]["loader"]
     train_sampler = loaders["train"]["sampler"]
+    dist_sampler = loaders["train"]["dist_sampler"]
     nTrain = loaders["train"]["samples"]
     val_loader = loaders["validation"]["loader"]
     nVal = loaders["validation"]["samples"]
@@ -235,7 +238,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             sys.stdout.flush()
 
         # Train
-        if train_sampler:
+        if dist_sampler:
             train_sampler.set_epoch(epoch)
         tic_t = perf_counter()
         loss, t_data = train(comm, model, train_loader, 

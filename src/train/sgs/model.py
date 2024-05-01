@@ -12,7 +12,7 @@ import math as m
 from numpy import linalg as la
 import torch
 import torch.nn as nn
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, RandomSampler, BatchSampler
 from torch.utils.data.distributed import DistributedSampler
 try: 
     import vtk
@@ -79,7 +79,7 @@ class anisoSGS(nn.Module):
         :param batch: a tensor containing the batched inputs and outputs
         :return: loss for the batch
         """
-
+        if len(batch.shape)>2: batch = torch.squeeze(batch)
         features = batch[:, :self.ndIn]
         target = batch[:, self.ndIn:]
         output = self.forward(features)
@@ -93,7 +93,7 @@ class anisoSGS(nn.Module):
         :param batch: a tensor containing the batched inputs and outputs
         :return: tuple with the accuracy and loss for the batch
         """
-        
+        if len(batch.shape)>2: batch = torch.squeeze(batch)
         features = batch[:, :self.ndIn]
         target = batch[:, self.ndIn:]
         prediction = self.forward(features)
@@ -109,7 +109,7 @@ class anisoSGS(nn.Module):
         :param return_loss: whether to compute the loss on the testing data
         :return: tuple with the accuracy and loss for the batch
         """
- 
+        if len(batch.shape)>2: batch = torch.squeeze(batch)
         features = batch[:, :self.ndIn]
         target = batch[:, self.ndIn:]
         prediction = self.forward(features)
@@ -172,7 +172,7 @@ class anisoSGS(nn.Module):
                               (self.max_val[i] - self.min_val[i])
         return data
     
-    def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
+    def setup_dataloaders(self, data: torch.Tensor, cfg, comm) -> dict:
         """
         Prepare the training and validation data loaders 
 
@@ -185,11 +185,14 @@ class anisoSGS(nn.Module):
         samples = data.shape[0]
         nVal = m.floor(samples*cfg.validation_split)
         nTrain = samples-nVal
+        idx = torch.randperm(samples,dtype=torch.int32,device='cpu') 
+        trainDataset = OfflineDataset(data[idx[:nTrain]])
         if (nVal==0 and cfg.validation_split>0):
+            valDataset = OfflineDataset(torch.zeros((1,6),device=cfg.device))
             if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
-        dataset = OfflineDataset(data)
-        trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
-
+        else:
+            valDataset = OfflineDataset(data[idx[nTrain:]])
+            
         # DataLoader
         # Try:
         # - pin_memory=True - should be faster for GPU training
@@ -197,16 +200,18 @@ class anisoSGS(nn.Module):
         # - prefetch_factor >1 - enables pre-fetching of data
         if (cfg.data_path == "synthetic"):
             # Each rank has loaded only their part of training data
-            train_sampler = None
-            val_sampler = None
+            distributed_sampler = False
+            train_sampler = BatchSampler(RandomSampler(trainDataset), batch_size=cfg.mini_batch, drop_last=True)
+            val_sampler = BatchSampler(RandomSampler(trainDataset), batch_size=cfg.mini_batch, drop_last=True)
             val_dataloader = None
-            train_dataloader = DataLoader(trainDataset, batch_size=cfg.mini_batch, 
-                                          shuffle=True, drop_last=True) 
+            train_dataloader = DataLoader(trainDataset, batch_size=1, 
+                                          shuffle=(train_sampler is None), sampler=train_sampler, drop_last=True) 
             if (nVal>0):
-                val_dataloader = DataLoader(valDataset, batch_size=cfg.mini_batch, 
-                                            drop_last=True)
+                val_dataloader = DataLoader(valDataset, batch_size=1, 
+                                            sampler=val_sampler, drop_last=True)
         else:
             # Each rank has loaded all the training data, so restrict data loader to a subset of dataset
+            distributed_sampler = True
             val_sampler = None
             val_dataloader = None
             train_sampler = DistributedSampler(trainDataset, num_replicas=comm.size, rank=comm.rank,
@@ -223,6 +228,7 @@ class anisoSGS(nn.Module):
             'train': {
                 'loader': train_dataloader,
                 'sampler': train_sampler,
+                'dist_sampler': distributed_sampler,
                 'samples': nTrain
             },
             'validation': {
@@ -236,6 +242,8 @@ class anisoSGS(nn.Module):
         """
         Perform the min-max scaling on the model outputs when online training
         """
+        #print(comm.rank, torch.amin(data[:,self.ndIn:], 0), flush=True)
+        #print(comm.rank, torch.amax(data[:,self.ndIn:], 0), flush=True)
         # Compute scaler and send to DB
         if not self.scaler_fit:
             self.scaler_fit = True
@@ -259,10 +267,12 @@ class anisoSGS(nn.Module):
             ind = self.ndIn+i
             data[:,ind] = (data[:,ind] - self.min_val[i]) / \
                           (self.max_val[i] - self.min_val[i])
+        #print(comm.rank, torch.amin(data[:,self.ndIn:], 0), flush=True)
+        #print(comm.rank, torch.amax(data[:,self.ndIn:], 0), flush=True)
         return data
 
     def online_dataloader(self, cfg, client, comm, keys: list, shuffle: Optional[bool] = False) \
-                        -> Tuple[torch.utils.data.DataLoader, float]:
+                        -> Tuple[DataLoader, float]:
         """
         Load data from database and create on-rank data loader
         """
@@ -284,14 +294,17 @@ class anisoSGS(nn.Module):
         elif (cfg.precision == "bf16"):
             concat_tensor = concat_tensor.type(torch.bfloat16)
 
-        data_loader = DataLoader(MiniBatchDataset(concat_tensor), 
-                                 shuffle=shuffle, batch_size=cfg.mini_batch)
+        dataset = MiniBatchDataset(concat_tensor)
+        sampler = BatchSampler(RandomSampler(dataset), batch_size=cfg.mini_batch, drop_last=True) 
+        data_loader = DataLoader(dataset, sampler=sampler, 
+                                shuffle=False, batch_size=1)
         return data_loader, rtime
 
     def save_checkpoint(self, fname: str, data: torch.Tensor):
         """
         Save model checkpoint and min-max scaling
         """
+        if len(data.shape)>2: data = torch.squeeze(data)
         torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
         module = torch.jit.trace(self, data)
         torch.jit.save(module, f"{fname}_jit.pt")

@@ -198,7 +198,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         global_loss = metric_average(comm, loss)
         toc_t = perf_counter()
         if (iepoch>0):
+            nTrain = cfg.mini_batch*len(train_loader)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
         if comm.rank == 0: 
             print(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n", flush=True)
@@ -229,7 +231,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             global_val_acc = metric_average(comm, val_acc)
             toc_v = perf_counter()
             if (iepoch>0):
+                nVal = cfg.mini_batch*len(val_loader)
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
+                t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
             if comm.rank == 0: 
                 print(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")        
