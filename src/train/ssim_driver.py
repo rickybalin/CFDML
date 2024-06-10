@@ -103,6 +103,9 @@ def launch_coDB(cfg, nodelist, nNodes):
     # Start the co-located model
     block = False if cfg.train.executable else True
     print("Launching simulation and SmartSim co-located DB ... ")
+    if len(cfg.sim.attach_files)>0:
+        colo_model.attach_generator_files(to_copy=list(cfg.sim.attach_files))
+    exp.generate(colo_model, overwrite=True)
     exp.start(colo_model, block=block, summary=False)
     print("Done\n")
 
@@ -135,8 +138,11 @@ def launch_coDB(cfg, nodelist, nNodes):
                                                     #cfg.run_args.mlprocs_pn,
                                                     #cfg.run_args.simprocs_pn)
 
-        ml_model = exp.create_model("train_model", ml_settings)
+        ml_model = exp.create_model("train", ml_settings)
         print("Launching training script ... ")
+        if len(cfg.train.attach_files)>0:
+            ml_model.attach_generator_files(to_copy=list(cfg.train.attach_files))
+        exp.generate(ml_model, overwrite=True)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 
@@ -222,8 +228,11 @@ def launch_clDB(cfg, nodelist, nNodes):
                                 inputs=None, outputs=None )
 
     # Start the client model
-    print("Launching the client ...")
     block = False if cfg.train.executable else True
+    print("Launching the simulation ...")
+    if len(cfg.sim.attach_files)>0:
+        colo_model.attach_generator_files(to_copy=list(cfg.sim.attach_files))
+    exp.generate(colo_model, overwrite=True)
     exp.start(inf_exp, summary=False, block=block)
     print("Done\n")
     
@@ -248,8 +257,11 @@ def launch_clDB(cfg, nodelist, nNodes):
             run_settings_ML.set_hostlist(mlNodes)
             run_settings_ML.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
-        print("Launching the training client ...")
-        ml_model = exp.create_model("train_model", run_settings_ML)
+        print("Launching the training script ...")
+        ml_model = exp.create_model("train", run_settings_ML)
+        if len(cfg.train.attach_files)>0:
+            ml_model.attach_generator_files(to_copy=list(cfg.train.attach_files))
+        exp.generate(ml_model, overwrite=True)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 
