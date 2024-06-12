@@ -44,13 +44,14 @@ sim:
     device: "" # cpu, cuda - device for simulation
     arguments: "" # string - command line arguments to simulation
     affinity: "" # string - GPU affinity script for simulation
-    attach_files: [] # [string] - files to attach and copy to Model sub-directory
+    copy_files: [] # [string] - files to attach by copy to Model sub-directory
+    link_files: [] # [string] - files to attach by symlink to Model sub-directory
 
 # Distributed training config
 train:
     executable: "" # string - path to ML training executable
     affinity: "" # string - GPU affinity script for training
     config: "" # string - override path for training config file
-    attach_files: [] # [string] - files to attach and copy to Model sub-directory
+    copy_files: [] # [string] - files to attach by copy to Model sub-directory
 
    
