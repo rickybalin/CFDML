@@ -151,7 +151,7 @@ class SmartRedisClient:
    
     # Calculate the filter batch size
     def get_batch(self, cfg):     
-        max_batch_size = int(self.num_db_tensors*self.nfilters/(cfg.ppn*cfg.ppd))
+        max_batch_size = int(self.num_db_tensors*self.nfilters/cfg.ppn)
         if (not cfg.online.global_shuffling):
             self.tensor_batch = max_batch_size
         else:

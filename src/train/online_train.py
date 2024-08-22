@@ -36,7 +36,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split):
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
     if (cfg.online.db_launch=="colocated"):
-        replicas = cfg.ppn*cfg.ppd
+        replicas = cfg.ppn
         rank_arg = comm.rankl
     else:
         replicas = comm.size
