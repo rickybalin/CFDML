@@ -29,15 +29,14 @@ class MPI_COMM:
         self.size = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
         self.name = MPI.Get_processor_name()
-        self.rankl = self.rank % (cfg.ppn*cfg.ppd)
+        self.rankl = self.rank % cfg.ppn
         self.sum = MPI.SUM
         self.min = MPI.MIN
         self.max = MPI.MAX
         self.minloc = MPI.MINLOC
         self.maxloc = MPI.MAXLOC
         if print_hello:
-            print(f"Hello from MPI rank {self.rank}/{self.size} and local rank {self.rankl}")
-            sys.stdout.flush()
+            print(f"Hello from MPI rank {self.rank}/{self.size} and local rank {self.rankl}",flush=True)
 
 ### Horovod Communicator class
 class HVD_COMM:
