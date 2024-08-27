@@ -97,7 +97,7 @@ def main(cfg: DictConfig):
     
     # Set device to run on and offload model
     device = torch.device(cfg.device)
-    torch.set_num_threads(1)
+    torch.set_num_threads(cfg.threads)
     if (cfg.device == 'cuda'):
         if torch.cuda.is_available():
             cuda_id = comm.rankl//cfg.ppd if torch.cuda.device_count()>1 else 0
