@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
 
     # Train model
     if cfg.online.db_launch:
-        model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
+        model = onlineTrainLoop(cfg, comm, client, t_data, model)
     else:
         model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
 
@@ -134,7 +134,7 @@ def main(cfg: DictConfig):
         dist.destroy_process_group()
     if (comm.rank == 0):
         model.eval()
-        model.save_checkpoint(cfg.name, testData)
+        model.save_checkpoint(cfg.name, num_samples=client.npts)
         print("")
         print("Saved model to disk\n")
         sys.stdout.flush()

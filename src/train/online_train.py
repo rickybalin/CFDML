@@ -138,7 +138,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             if (tmp[0] < 0.5):
                 if (comm.rank == 0):
                     print("Simulation says time to quit training ... \n", flush=True)
-                iTest = False
                 rerun_check = 0
                 break
 
@@ -247,21 +246,19 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         if (global_loss <= cfg.tolerance):
             if (comm.rank == 0):
                 print("\nConvergence tolerance met. Stopping training loop. \n", flush=True)
-            iTest = True
             break
         
         # Check if max number of epochs is reached
         if (iepoch >= cfg.epochs-1):
             if (comm.rank == 0):
                 print("\nMax number of epochs reached. Stopping training loop. \n", flush=True)
-            iTest = True
             break
 
         iepoch = iepoch + 1 
 
 
     # Perform testing on a new snapshot
-    if (iTest):
+    if (cfg.online.test):
         if (comm.rank==0):
             print("\nTesting model\n-------------------------------", flush=True)
  
@@ -307,7 +304,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         arrMLrun = np.zeros(2)
         client.client.put_tensor("check-run",arrMLrun)
  
-    return model, testData
+    return model
 
 
 

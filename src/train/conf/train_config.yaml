@@ -30,6 +30,7 @@ online:
     batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
     db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
+    test: True # Bool - perform a testing step after training
  
 # Model specific config
 sgs:
@@ -42,9 +43,5 @@ quadconv:
     mesh_file: "" # string - path to mesh nodes for QuadConv model (offline only)
     channels: 1 # int - channels for QuadConv model
     quadconv_config: "./conf/quadconv_config.yaml" # string - path to config file for QuadConv model
-gnn:
-    gnn_config: "./conf/gnn_config.yaml" # string - path to config file for GNN model
-    input_channels: 1 # int - input channels for model
-    output_channels: 1 # int - output channels for model
     
 
