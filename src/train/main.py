@@ -10,6 +10,7 @@ import datetime
 
 # Import ML libraries
 import torch
+import torch.distributed as dist
 
 # Import required functions
 from online_train import onlineTrainLoop
@@ -45,8 +46,6 @@ def main(cfg: DictConfig):
         hvd_comm.init(print_hello=print_hello)
     elif (cfg.distributed=='ddp'):
         import socket
-        import torch.distributed as dist
-        #from torch.nn.parallel import DistributedDataParallel as DDP
         os.environ['RANK'] = str(comm.rank)
         os.environ['WORLD_SIZE'] = str(comm.size)
         master_addr = socket.gethostname() if comm.rank == 0 else None
@@ -134,7 +133,7 @@ def main(cfg: DictConfig):
         dist.destroy_process_group()
     if (comm.rank == 0):
         model.eval()
-        model.save_checkpoint(cfg.name, num_samples=client.npts)
+        model.save_checkpoint(cfg.name, num_samples=cfg.mini_batch)
         print("")
         print("Saved model to disk\n")
         sys.stdout.flush()

@@ -20,13 +20,14 @@ try:
 except:
     pass
 
-from utils import metric_average
+from utils import metric_average_mpi, metric_average_ccl
 
 ### Train the model
 def train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
           epoch, t_data, cfg):
     model.train()
     num_batches = len(train_loader)
+    #num_batches = torch.tensor([len(train_loader)],device=torch.device(cfg.device))
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
 
     # Loop over mini-batches
@@ -68,6 +69,9 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
 
     #print(comm.rank, running_loss.item(), num_batches, flush=True)
     running_loss = running_loss.item() / num_batches
+    #running_loss = running_loss / num_batches
+    #running_loss = metric_average_mpi(comm,running_loss)
+    #running_loss = metric_average_ccl(running_loss,comm.size)
     return running_loss, t_data
 
 ### ================================================ ###
@@ -244,10 +248,10 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         loss, t_data = train(comm, model, train_loader, 
                              optimizer, scaler, mixed_dtype,
                              epoch, t_data, cfg)
-        global_loss = metric_average(comm, loss)
-        toc_t = perf_counter()
+        global_loss = metric_average_mpi(comm, loss)
         if comm.rank == 0: 
             print(f"Training set: | Epoch: {epoch+1} | Average loss: {global_loss:>8e}", flush=True)
+        toc_t = perf_counter()
         if (epoch>0):
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
@@ -259,8 +263,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             val_acc, val_loss, valData = validate(comm, model, 
                                                   val_loader, 
                                                   mixed_dtype, epoch, cfg)
-            global_val_acc = metric_average(comm, val_acc)
-            global_val_loss = metric_average(comm, val_loss)
+            global_val_acc = metric_average_mpi(comm, val_acc)
+            global_val_loss = metric_average_mpi(comm, val_loss)
             toc_v = perf_counter()
             if comm.rank == 0:
                 print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")

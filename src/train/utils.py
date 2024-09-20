@@ -6,6 +6,8 @@
 from os.path import exists
 import sys
 import numpy as np
+import torch
+import torch.distributed as dist
 
 
 ### MPI Communicator class
@@ -59,11 +61,15 @@ class HVD_COMM:
             sys.stdout.flush()
 
 ### Compute the average of a quantity across all ranks
-def metric_average(comm, val):
+def metric_average_mpi(comm, val):
     avg_val = comm.comm.allreduce(val, op=comm.sum)
     avg_val = avg_val / comm.size
     return avg_val
 
+def metric_average_ccl(val, size):
+    avg_val = dist.all_reduce(val, op=dist.ReduceOp.SUM)
+    avg_val = avg_val/size
+    return avg_val
 
 ### Compute the correlation coefficient between predicted and target outputs
 def comp_corrCoeff(output_tensor, target_tensor):

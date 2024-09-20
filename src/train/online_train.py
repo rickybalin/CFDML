@@ -24,7 +24,7 @@ try:
 except:
     pass
 
-from utils import metric_average
+from utils import metric_average_mpi
 from offline_train import train, validate, test
 from datasets import MiniBatchDataset, KeyDataset
 
@@ -194,15 +194,15 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             running_loss += running_loss
 
         loss = running_loss / len(train_tensor_loader)
-        global_loss = metric_average(comm, loss)
+        global_loss = metric_average_mpi(comm, loss)
+        if comm.rank == 0: 
+            print(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n", flush=True)
         toc_t = perf_counter()
         if (iepoch>0):
             nTrain = cfg.mini_batch*len(train_loader)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
-        if comm.rank == 0: 
-            print(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n", flush=True)
 
         # Perform validation step
         if (num_val_tensors>0):
@@ -225,9 +225,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 running_loss += running_loss
                 running_acc += running_acc
             val_loss = running_loss / len(val_tensor_loader)
-            global_val_loss = metric_average(comm, val_loss)
+            global_val_loss = metric_average_mpi(comm, val_loss)
             val_acc = running_acc / len(val_tensor_loader)
-            global_val_acc = metric_average(comm, val_acc)
+            global_val_acc = metric_average_mpi(comm, val_acc)
             toc_v = perf_counter()
             if (iepoch>0):
                 nVal = cfg.mini_batch*len(val_loader)
@@ -291,9 +291,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             running_loss += running_loss
             running_acc += running_acc
         test_loss = running_loss / len(test_tensor_loader)
-        global_test_loss = metric_average(comm, test_loss)
+        global_test_loss = metric_average_mpi(comm, test_loss)
         test_acc = running_acc / len(test_tensor_loader)
-        global_test_acc = metric_average(comm, test_acc)
+        global_test_acc = metric_average_mpi(comm, test_acc)
         if comm.rank == 0: 
             print(f"Test set: Average accuracy: {global_test_acc} | Average Loss: {global_test_loss:>8e}")        
 
