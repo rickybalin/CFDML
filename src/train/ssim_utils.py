@@ -23,6 +23,7 @@ class SmartRedisClient:
         self.dataOverWr = None
         self.rank = None
         self.size = None
+        self.max_wait_time = 20.
 
     # Initializa client
     def init(self, cfg, comm, t_data):
@@ -138,7 +139,9 @@ class SmartRedisClient:
     # Read the flag determining how many filterwidths to train on
     def read_num_filters(self, model_name, t_data):
         if (model_name == "sgs"):
-            while True:
+            elapsed_time = 0.
+            tic = perf_counter()
+            while elapsed_time<self.max_wait_time:
                 if (self.client.poll_tensor("num_filter_widths",0,1)):
                     rtime = perf_counter()
                     self.nfilters = self.client.get_tensor('num_filter_widths')[0]
@@ -146,6 +149,7 @@ class SmartRedisClient:
                     t_data.t_meta = t_data.t_meta + rtime
                     t_data.i_meta = t_data.i_meta + 1 
                     break
+                elapsed_time = perf_counter() - tic
             if (self.rank==0):
                 print(f"Using {self.nfilters} filters widths for training data", flush=True)
    
