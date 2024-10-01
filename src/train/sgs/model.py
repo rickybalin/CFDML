@@ -300,13 +300,15 @@ class anisoSGS(nn.Module):
                                 shuffle=False, batch_size=1)
         return data_loader, rtime
 
-    def save_checkpoint(self, fname: str, data: torch.Tensor):
+    def save_checkpoint(self, fname: str, num_samples : Optional[int] = 2048):
         """
         Save model checkpoint and min-max scaling
         """
-        if len(data.shape)>2: data = torch.squeeze(data)
+        model_dtype = next(self.net.parameters()).dtype
+        model_device = next(self.net.parameters()).device
+        dummy_data = torch.randn(num_samples,self.ndIn,dtype=model_dtype,device=model_device)
         torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
-        module = torch.jit.trace(self, data)
+        module = torch.jit.trace(self, dummy_data)
         torch.jit.save(module, f"{fname}_jit.pt")
 
         if self.scaler_fit:
