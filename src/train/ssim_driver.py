@@ -10,8 +10,8 @@ from smartsim.settings import RunSettings, PalsMpiexecSettings
 
 
 ## Define function to parse node list
-def parseNodeList(fname):
-    with open(fname) as file:
+def parseNodeList(hostfile):
+    with open(hostfile) as file:
         nodelist = file.readlines()
         nodelist = [line.rstrip() for line in nodelist]
         nodelist = [line.split('.')[0] for line in nodelist]
@@ -55,6 +55,7 @@ def launch_coDB(cfg, nodelist, nNodes):
         sim_settings.set_hostlist(hosts)
         sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
         sim_settings.add_exe_args(cfg.sim.arguments)
+        sim_settings.set_launcher_args({'no-vni': None, 'envall': None})
         if (cfg.sim.affinity):
             sim_settings.set_gpu_affinity_script(cfg.sim.affinity,
                                                  cfg.run_args.simprocs_pn)
@@ -133,6 +134,7 @@ def launch_coDB(cfg, nodelist, nNodes):
             ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
             ml_settings.set_hostlist(hosts)
             ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
+            ml_settings.set_launcher_args({'no-vni': None, 'envall': None})
             if (cfg.train.affinity):
                 ml_settings.set_gpu_affinity_script(cfg.train.affinity,
                                                     cfg.run_args.mlprocs_pn,
@@ -275,10 +277,10 @@ def launch_clDB(cfg, nodelist, nNodes):
 @hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
 def main(cfg: DictConfig):
     # Get nodes of this allocation (job)
-    nodelist = nNodes = None
-    if (cfg.database.launcher=='pbs'):
+    if (cfg.run_args.hostfile): hostfile = cfg.run_args.hostfile
+    elif (cfg.database.launcher=='pbs'):
         hostfile = os.getenv('PBS_NODEFILE')
-        nodelist, nNodes = parseNodeList(hostfile)
+    nodelist, nNodes = parseNodeList(hostfile)
 
     # Export KeyDB env variables if requested instead of Redis
     if (cfg.database.backend == "keydb"):

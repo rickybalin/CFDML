@@ -11,6 +11,7 @@ database:
 
 # Run config
 run_args:
+    hostfile: "" # str - host file to use for launching components
     nodes: 1 # integer - total number of nodes for job
     db_nodes: 1 # integer - number of nodes for database
     sim_nodes: 1 # integer - number of nodes for simulation

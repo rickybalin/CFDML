@@ -88,7 +88,7 @@ def main(cfg: DictConfig):
                                 rank=int(comm.rank),
                                 world_size=int(comm.size),
                                 init_method='env://',
-                                timeout=datetime.timedelta(seconds=120))
+                                timeout=datetime.timedelta(seconds=600))
 
     # Set all seeds if need reproducibility
     if cfg.reproducibility:
