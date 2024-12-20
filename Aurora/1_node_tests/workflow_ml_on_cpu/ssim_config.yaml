@@ -1,0 +1,56 @@
+# Database config
+database:
+    launch: True # True,False - determine whether to launch SmartSim database
+    backend: "redis" # redis,keydb - launch Redis of KeyDB database
+    deployment: "colocated" # colocated,clustered - deployment of database
+    port: 6780
+    network_interface: "uds" # lo,hsn0,uds - network used for data transfer
+    # On Polaris: lo hsn0 for clustered, lo and uds for co-located
+    exp_name: "cfdml" # string
+    launcher: "pbs" # pbs, cobalt - job scheduler
+
+# Run config
+run_args:
+    hostfile: "" # str - host file to use for launching components
+    nodes: 1 # integer - total number of nodes for job
+    db_nodes: 1 # integer - number of nodes for database
+    sim_nodes: 1 # integer - number of nodes for simulation
+    ml_nodes: 1 # integer - number of nodes for ML training
+    cores_pn: 104 # integer - number of CPU cores per node.
+    simprocs: 10 # integer - number of MPI processes for simulation
+    simprocs_pn: 10 # integer - number of MPI processes per node for simulation
+    mlprocs: 2 # integer - number of MPI processes for ML training
+    mlprocs_pn: 2 # integer - number of MPI processes per node for ML training
+    dbprocs_pn: 4 # integer - number of threads for database
+    sim_cpu_bind: "list:1:8:16:24:32:40:53:60:68:76:84:92" # none, core, list, numa - CPU binding for simulation
+    ml_cpu_bind: "list:4,5,6,7:12,13,14,15:20,21,22,23:28,29,30,31:36,37,38,39:44,45,46,47:56,57,58,59:64,65,66,67:72,73,74,75:80,81,82,83:88,89,90,91:96,97,98,99" # none, core, list, numa - CPU binding for ML training
+    db_cpu_bind: [48,49,50,51] # ID of CPU logical devices on which to pin the Orchestrator
+                        # empty list - [0,1,2,...,dbprocs_pn-1]
+                        # None - disable pinning
+                        # list of ints - pinning to the specified CPU ID
+
+# Model Inference config
+inference:
+    model_path: "" # string - path to model to load for inference
+    backend: "TORCH" # TORCH - ML backend to use for inference
+    device: "GPU" # CPU,GPU - device on which to run inference
+    batch: 0 # integer - how many inference requests to batch before running model
+    devices_per_node: 1 # integer - number of GPU available for inference
+    precision: "fp32" # fp32, fp64 - precision of model and of data
+    size: [1, 1, 1] # data size
+
+# Simulation config
+sim:
+    executable: "" # string - path to simulation executable
+    device: "" # cpu, cuda - device for simulation
+    arguments: "-options_file ./blasiusNGA_ssim.yaml" # string - command line arguments to simulation
+    affinity: "" # string - GPU affinity script for simulation
+    copy_files: ["./blasiusNGA_ssim.yaml","./6-15_yspacing.dat","./STGInflow_12-30_SPD.dat","./STGRand_12-30.dat"] # [string] - files to attach by copy to Model sub-directory
+    link_files: [] # [string] - files to attach by symlink to Model sub-directory
+
+# Distributed training config
+train:
+    executable: "" # string - path to ML training executable
+    affinity: "" # string - GPU affinity script for training
+    config: "" # string - override path for training config file
+    copy_files: [] # [string] - files to attach by copy to Model sub-directory
