@@ -74,45 +74,26 @@ class MiniBatchDataset(Dataset):
 ### Used when the ranks are pre-determined and passed in as a list, was made
 ### to enable easy splitting of database tensors into training, validation, testing
 class KeyDataset(Dataset):
-    def __init__(self,rank_list,head_rank,step_num,dataOverWrite):
-        self.ranks = rank_list
+    def __init__(self, num_sim_ranks, num_filters, head_rank):
+        self.ranks = num_sim_ranks
+        self.filters = num_filters
         self.head_rank = head_rank
-        self.step = step_num
-        self.ow = dataOverWrite
+        self.total_data = self.ranks*self.filters
 
     def __len__(self):
-        return len(self.ranks)
+        return self.total_data
 
     def __getitem__(self, idx):
-        tensor_num = self.ranks[idx]+self.head_rank
-        if (self.ow > 0.5):
-            return f"y.{tensor_num}"
+        if self.filters==1:
+            rank_id = idx+self.head_rank
+            return f"y.{rank_id}"
         else:
-            return f"y.{tensor_num}.{self.step}"
+            rank_id = idx%self.ranks
+            rank_id = rank_id+self.head_rank
+            filter_id = idx//self.ranks
+            return f"y.{rank_id}.{filter_id}"
         
 
-### Dataset that takes in a list of rank numbers and returns the length of the list
-### and the key for an index in that list of ranks
-### The input is a list of rank numbers corresponding to tensors in the database
-### Used when the ranks are pre-determined and passed in as a list, was made
-### to enable easy splitting of database tensors into training, validation, testing
-class KeyMFDataset(Dataset):
-    def __init__(self,tensor_list,nrankl,head_rank,filters):
-        self.tensors = tensor_list
-        self.size = nrankl
-        self.head_rank = head_rank
-        self.filters = filters
-
-    def __len__(self):
-        return len(self.tensors)
-
-    def __getitem__(self, idx):
-        nfilters = self.filters.size
-        rank_id = idx//size
-        filt_id = idx%nfilters
-        delta = round(filters[filt_id])
-        return f"y.{rank_id}.{delta}"
-    
 
 ### Dataset for offline training
 ### Classic map-stype dataset that returns the indexed array
@@ -125,6 +106,4 @@ class OfflineDataset(Dataset):
 
     def __getitem__(self,idx):
         return self.data[idx]
-
-
 

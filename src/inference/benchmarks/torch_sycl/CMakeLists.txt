@@ -22,12 +22,18 @@ endif(USE_XPU)
 
 add_executable(inference_torch_sycl_cpy inference_torch_sycl_copy.cpp)
 add_executable(inference_torch_sycl_ptr inference_torch_sycl_pointer.cpp)
+add_executable(inference_torch_sycl_exp_cpy inference_torch_sycl_exp_copy.cpp)
+add_executable(inference_torch_sycl_exp_cpy_h inference_torch_sycl_exp_copy_host.cpp)
 add_executable(test_zero_copy test_zero_copy.cpp)
 
 target_link_libraries(inference_torch_sycl_cpy ${TORCH_LIBS})
 target_link_libraries(inference_torch_sycl_ptr ${TORCH_LIBS})
+target_link_libraries(inference_torch_sycl_exp_cpy ${TORCH_LIBS})
+target_link_libraries(inference_torch_sycl_exp_cpy_h ${TORCH_LIBS})
 target_link_libraries(test_zero_copy ${TORCH_LIBS})
 
 set_property(TARGET inference_torch_sycl_cpy PROPERTY CXX_STANDARD 17)
 set_property(TARGET inference_torch_sycl_ptr PROPERTY CXX_STANDARD 17)
+set_property(TARGET inference_torch_sycl_exp_cpy PROPERTY CXX_STANDARD 17)
+set_property(TARGET inference_torch_sycl_exp_cpy_h PROPERTY CXX_STANDARD 17)
 set_property(TARGET test_zero_copy PROPERTY CXX_STANDARD 17)

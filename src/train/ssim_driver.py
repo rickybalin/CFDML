@@ -10,8 +10,8 @@ from smartsim.settings import RunSettings, PalsMpiexecSettings
 
 
 ## Define function to parse node list
-def parseNodeList(fname):
-    with open(fname) as file:
+def parseNodeList(hostfile):
+    with open(hostfile) as file:
         nodelist = file.readlines()
         nodelist = [line.rstrip() for line in nodelist]
         nodelist = [line.split('.')[0] for line in nodelist]
@@ -23,7 +23,7 @@ def parseNodeList(fname):
 def launch_coDB(cfg, nodelist, nNodes):
     # Print nodelist
     if (nodelist is not None):
-        print(f"\nRunning on {nNodes} total nodes on Polaris")
+        print(f"\nRunning on {nNodes} total nodes")
         print(nodelist, "\n")
         hosts = ','.join(nodelist)
 
@@ -33,22 +33,29 @@ def launch_coDB(cfg, nodelist, nNodes):
 
     # Set the run settings, including the client executable and how to run it
     client_exe = cfg.sim.executable
+    extension = client_exe.split(".")[-1]
+    if extension=="py":
+        exe_args = client_exe
+        client_exe = "python"
+    else:
+        exe_args = None
     if (cfg.database.launcher=='local'):
         sim_settings = RunSettings(client_exe,
-                           exe_args=None,
+                           exe_args=exe_args,
                            run_command='mpirun',
                            run_args={"-n" : cfg.run_args.simprocs},
                            env_vars=None)
     elif (cfg.database.launcher=='pbs'):
         sim_settings = PalsMpiexecSettings(
                            client_exe,
-                           run_args=None,
+                           exe_args=exe_args,
                            env_vars={'MPICH_OFI_CXI_PID_BASE':str(0)})
         sim_settings.set_tasks(cfg.run_args.simprocs)
         sim_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
         sim_settings.set_hostlist(hosts)
         sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
         sim_settings.add_exe_args(cfg.sim.arguments)
+        sim_settings.set_launcher_args({'no-vni': None, 'envall': None})
         if (cfg.sim.affinity):
             sim_settings.set_gpu_affinity_script(cfg.sim.affinity,
                                                  cfg.run_args.simprocs_pn)
@@ -73,7 +80,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                 **kwargs
                 )
     else:
-        colo_model.colocate_db_tpc(
+        colo_model.colocate_db_tcp(
                 port=PORT,
                 ifname=cfg.database.network_interface,
                 db_cpus=cfg.run_args.dbprocs_pn,
@@ -97,6 +104,9 @@ def launch_coDB(cfg, nodelist, nNodes):
     # Start the co-located model
     block = False if cfg.train.executable else True
     print("Launching simulation and SmartSim co-located DB ... ")
+    if len(cfg.sim.copy_files)>0 or len(cfg.sim.link_files)>0:
+        colo_model.attach_generator_files(to_copy=list(cfg.sim.copy_files), to_symlink=list(cfg.sim.link_files))
+    exp.generate(colo_model, overwrite=True)
     exp.start(colo_model, block=block, summary=False)
     print("Done\n")
 
@@ -124,13 +134,17 @@ def launch_coDB(cfg, nodelist, nNodes):
             ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
             ml_settings.set_hostlist(hosts)
             ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
+            ml_settings.set_launcher_args({'no-vni': None, 'envall': None})
             if (cfg.train.affinity):
                 ml_settings.set_gpu_affinity_script(cfg.train.affinity,
                                                     cfg.run_args.mlprocs_pn,
                                                     cfg.run_args.simprocs_pn)
 
-        ml_model = exp.create_model("train_model", ml_settings)
+        ml_model = exp.create_model("train", ml_settings)
         print("Launching training script ... ")
+        if len(cfg.train.copy_files)>0:
+            ml_model.attach_generator_files(to_copy=list(cfg.train.copy_files))
+        exp.generate(ml_model, overwrite=True)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 
@@ -216,8 +230,11 @@ def launch_clDB(cfg, nodelist, nNodes):
                                 inputs=None, outputs=None )
 
     # Start the client model
-    print("Launching the client ...")
     block = False if cfg.train.executable else True
+    print("Launching the simulation ...")
+    if len(cfg.sim.copy_files)>0 or len(cfg.sim.link_files)>0:
+        colo_model.attach_generator_files(to_copy=list(cfg.sim.copy_files), to_symlink=list(cfg.sim.link_files))
+    exp.generate(colo_model, overwrite=True)
     exp.start(inf_exp, summary=False, block=block)
     print("Done\n")
     
@@ -242,8 +259,11 @@ def launch_clDB(cfg, nodelist, nNodes):
             run_settings_ML.set_hostlist(mlNodes)
             run_settings_ML.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
-        print("Launching the training client ...")
-        ml_model = exp.create_model("train_model", run_settings_ML)
+        print("Launching the training script ...")
+        ml_model = exp.create_model("train", run_settings_ML)
+        if len(cfg.train.copy_files)>0:
+            ml_model.attach_generator_files(to_copy=list(cfg.train.copy_files))
+        exp.generate(ml_model, overwrite=True)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 
@@ -257,10 +277,10 @@ def launch_clDB(cfg, nodelist, nNodes):
 @hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
 def main(cfg: DictConfig):
     # Get nodes of this allocation (job)
-    nodelist = nNodes = None
-    if (cfg.database.launcher=='pbs'):
+    if (cfg.run_args.hostfile): hostfile = cfg.run_args.hostfile
+    elif (cfg.database.launcher=='pbs'):
         hostfile = os.getenv('PBS_NODEFILE')
-        nodelist, nNodes = parseNodeList(hostfile)
+    nodelist, nNodes = parseNodeList(hostfile)
 
     # Export KeyDB env variables if requested instead of Redis
     if (cfg.database.backend == "keydb"):
