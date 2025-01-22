@@ -46,7 +46,7 @@ cd ..
 
 Once the installation is complete, source the following before running libCEED+CFDML 
 ```
-module load frameworks/2024.2.1_u1
+module load frameworks
 source </path/to/env/installation>/_ssim_env/bin/activate
 
 export TORCH_PATH=$( python -c 'import torch; print(torch.__path__[0])' )
@@ -55,19 +55,16 @@ export LD_LIBRARY_PATH=$TORCH_PATH/lib:$LD_LIBRARY_PATH
 
 ### Clone CFDML
 
-Clone CFDML from Github and switch to the `aesp` branch
+Clone CFDML from Github
 ```
 git clone https://github.com/rickybalin/CFDML.git
-cd CFDML
-git checkout aesp
-cd ..
 ```
 
 ### Build PETSc
 
 From a compute node of Aurora, load the frameworks module
 ```
-module load frameworks/2024.2.1_u1
+module load frameworks
 ```
 
 and clone Kenneth E. Jansen's fork of PETSc
