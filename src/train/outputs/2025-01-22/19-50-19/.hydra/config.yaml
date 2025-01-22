@@ -1,0 +1,37 @@
+ppn: 4
+ppd: 1
+threads: 1
+logging: debug
+device: cuda
+model: sgs
+data_path: synthetic
+num_samples_per_rank: 111
+reproducibility: false
+epochs: 10
+mini_batch: 1
+learning_rate: 0.001
+tolerance: 1.0e-08
+validation_split: 0.2
+optimizer: Adam
+scheduler: None
+precision: fp32
+mixed_precision: false
+name: ./NNmodel
+save_db: false
+online:
+  db_launch: ''
+  global_shuffling: false
+  batch: 0
+  simprocs: 1
+  db_nodes: 1
+  test: true
+sgs:
+  inputs: 6
+  outputs: 6
+  neurons: 20
+  layers: 4
+  comp_model_ins_outs: false
+quadconv:
+  mesh_file: ''
+  channels: 1
+  quadconv_config: ./conf/quadconv_config.yaml
