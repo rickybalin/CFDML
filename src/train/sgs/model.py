@@ -202,7 +202,7 @@ class anisoSGS(nn.Module):
             # Each rank has loaded only their part of training data
             distributed_sampler = False
             train_sampler = BatchSampler(RandomSampler(trainDataset), batch_size=cfg.mini_batch, drop_last=True)
-            val_sampler = BatchSampler(RandomSampler(trainDataset), batch_size=cfg.mini_batch, drop_last=True)
+            val_sampler = BatchSampler(RandomSampler(valDataset), batch_size=cfg.mini_batch, drop_last=True)
             val_dataloader = None
             train_dataloader = DataLoader(trainDataset, batch_size=1, 
                                           shuffle=(train_sampler is None), sampler=train_sampler, drop_last=True) 
