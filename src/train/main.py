@@ -68,27 +68,22 @@ def main(cfg: DictConfig):
     if (comm.rank == 0):
         print(f"\nRunning on device: {cfg.device} \n", flush=True)
 
-    # Import Horovod and initialize
-    hvd_comm = None
-    if (cfg.distributed=='horovod'):
-        hvd_comm = utils.HVD_COMM()
-        hvd_comm.init(print_hello=print_hello)
-    elif (cfg.distributed=='ddp'):
-        os.environ['RANK'] = str(comm.rank)
-        os.environ['WORLD_SIZE'] = str(comm.size)
-        master_addr = socket.gethostname() if comm.rank == 0 else None
-        master_addr = comm.comm.bcast(master_addr, root=0)
-        os.environ['MASTER_ADDR'] = master_addr
-        os.environ['MASTER_PORT'] = str(2345)
-        if (cfg.device=='cuda' and cfg.ppd==1): backend = 'nccl'
-        elif (cfg.device=='cuda' and cfg.ppd>1): backend = 'gloo'
-        elif (cfg.device=='xpu' or ONECCL): backend = 'ccl'
-        elif (cfg.device=='cpu'): backend = 'gloo'
-        dist.init_process_group(backend,
-                                rank=int(comm.rank),
-                                world_size=int(comm.size),
-                                init_method='env://',
-                                timeout=datetime.timedelta(seconds=600))
+    # Initialize torch distributed
+    os.environ['RANK'] = str(comm.rank)
+    os.environ['WORLD_SIZE'] = str(comm.size)
+    master_addr = socket.gethostname() if comm.rank == 0 else None
+    master_addr = comm.comm.bcast(master_addr, root=0)
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = str(2345)
+    if (cfg.device=='cuda' and cfg.ppd==1): backend = 'nccl'
+    elif (cfg.device=='cuda' and cfg.ppd>1): backend = 'gloo'
+    elif (cfg.device=='xpu' or ONECCL): backend = 'ccl'
+    elif (cfg.device=='cpu'): backend = 'gloo'
+    dist.init_process_group(backend,
+                            rank=int(comm.rank),
+                            world_size=int(comm.size),
+                            init_method='env://',
+                            timeout=datetime.timedelta(seconds=600))
 
     # Set all seeds if need reproducibility
     if cfg.reproducibility:
@@ -131,9 +126,8 @@ def main(cfg: DictConfig):
         model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
 
     # Save model to file before exiting
-    if (cfg.distributed=='ddp'):
-        model = model.module
-        dist.destroy_process_group()
+    model = model.module
+    dist.destroy_process_group()
     if (comm.rank == 0):
         model.eval()
         model.save_checkpoint(cfg.name, num_samples=cfg.mini_batch)

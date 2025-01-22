@@ -4,7 +4,6 @@ ppd: 1 # integer - number of MPI processes per device for ML training
 threads: 1 # integer - number of intra-op threads to use in PyTorch
 logging: "debug" # no, debug, verbose-perf - type of logging desired
 device: "cpu" # cpu, cuda, xpu - device to train on
-distributed: "ddp" # horovod, ddp - distributed training library
 model: "sgs" # sgs, quadconv, gnn - model descriptor
 data_path: "synthetic" # string, synthetic - path to training data to load
 num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
