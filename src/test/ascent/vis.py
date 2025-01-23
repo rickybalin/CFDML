@@ -55,7 +55,6 @@ if __name__ == '__main__':
     # make sure the mesh we created conforms to the blueprint
     verify_info = conduit.Node()
     assert conduit.blueprint.mesh.verify(mesh,verify_info), "Mesh verified failed"
-    comm.Barrier()
 
     # Setup vis
     #scenes  = conduit.Node()
